@@ -4,8 +4,8 @@ This exists so the backend, the dashboard, and the evaluation harness can be
 developed and tested with no API key and no network. It is a rule engine, not a
 model: it pattern-matches the text it is handed.
 
-It is NOT a valid experimental condition: it pattern-matches strings rather
-than reasoning. The API rejects sweeps that mix mock with real models and leaves
+It pattern-matches strings rather than reasoning, so it is reported only as a
+rules-only baseline, never as a model. The API rejects sweeps that mix mock with real models and leaves
 mock out of the pooled stats view. A mock-only sweep can still be inspected on
 its own, which is what offline development needs.
 """

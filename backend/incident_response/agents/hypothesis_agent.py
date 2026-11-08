@@ -16,7 +16,8 @@ from dataclasses import dataclass, field
 from ..providers.base import LLMClient, LLMResponse, extract_json
 from ..taxonomy import FAULT_DESCRIPTIONS, FAULT_TYPES, RECOVERY_ACTIONS, RECOVERY_TARGETS
 
-MAX_TOKENS = 4096
+# Kept at the value used for the first evaluation sweep, so results stay comparable.
+MAX_TOKENS = 2048
 
 _LABEL_RE = re.compile(r'"predicted_fault"\s*:\s*"([^"]+)"')
 

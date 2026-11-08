@@ -167,8 +167,9 @@ even if the rest of its JSON was broken. `strict` also requires valid JSON. If t
 pipeline wins only on `strict`, its advantage is formatting rather than diagnosis.
 API failures are excluded from both and counted as `failed`.
 
-**The mock provider is not an experimental condition.** It pattern-matches strings
-and exists so the dashboard and harness can be developed offline. The API rejects
+**The mock provider is a rules-only baseline, not a model.** It pattern-matches
+strings, was written with knowledge of the log generator, and also lets the dashboard
+and harness be developed offline. The API rejects
 sweeps that mix it with real models and leaves it out of the pooled view.
 
 ---
