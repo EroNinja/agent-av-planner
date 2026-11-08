@@ -17,7 +17,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from incident_response.conditions import CONDITIONS
+from incident_response.conditions import ALL_CONDITIONS, CONDITIONS
 from incident_response.db import connect, init_db
 from incident_response.evaluation import Arm, plan_size, run_sweep_stream, summarize_cells, validate_arms
 from incident_response.log_generator import discover_logs
@@ -66,6 +66,8 @@ def main() -> None:
     )
     parser.add_argument("--conditions", default=",".join(CONDITIONS))
     parser.add_argument("--recovery", action="store_true", help="also score a proposed recovery action")
+    parser.add_argument("--no-hint", action="store_true", help="remove the spread-versus-clustered rule from the prompt")
+    parser.add_argument("--compound", action="store_true", help="allow more than one fault per run")
     parser.add_argument("--limit", type=int, default=0, help="cap the number of logs (0 = all)")
     parser.add_argument("--db", type=Path, default=BACKEND_DIR / "data" / "runs.db")
     args = parser.parse_args()
@@ -79,7 +81,7 @@ def main() -> None:
     arms = parse_arms(args.arms)
     conditions = [c.strip() for c in args.conditions.split(",") if c.strip()]
     for condition in conditions:
-        if condition not in CONDITIONS:
+        if condition not in ALL_CONDITIONS:
             sys.exit(f"unknown condition '{condition}'")
 
     conn = connect(args.db)
@@ -90,7 +92,7 @@ def main() -> None:
 
     cells: list[dict] = []
     sweep_id = "unknown"
-    for event in run_sweep_stream(records, arms, conn, conditions=conditions, recovery=args.recovery):
+    for event in run_sweep_stream(records, arms, conn, conditions=conditions, recovery=args.recovery, hint=not args.no_hint, compound=args.compound):
         kind = event["type"]
         if kind == "arm_start":
             print(f"=== {event['arm']} ===")

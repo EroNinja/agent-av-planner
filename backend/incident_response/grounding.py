@@ -16,6 +16,8 @@ from __future__ import annotations
 
 
 def _cites_cause(true_fault: str, evidence: dict, meta: dict) -> bool:
+    if "+" in true_fault:
+        return all(_cites_cause(part, evidence, meta) for part in true_fault.split("+"))
     if true_fault == "no_fault":
         return True
     if true_fault == "slow_query":

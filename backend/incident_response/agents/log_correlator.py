@@ -12,6 +12,8 @@ import math
 import re
 from dataclasses import asdict, dataclass, field
 
+ISOLATED_ERROR_LIMIT = 2
+
 LINE_RE = re.compile(
     r"^(?P<ts>\S+)\s+level=(?P<level>\w+)"
     r"(?:\s+component=(?P<component>\S+))?"
@@ -45,7 +47,7 @@ def _longest_contiguous_run(ids: list[int]) -> int:
     return best
 
 
-def _gap_profile(ids: list[int]) -> dict:
+def gap_profile(ids: list[int]) -> dict:
     """Spacing between failing request ids -- separates 'spread out' from 'clustered'.
 
     This is the single most load-bearing derived field in the summary: a
@@ -75,7 +77,11 @@ class LogSummary:
     latency_ms_mean: float = 0.0
     latency_ms_max: float = 0.0
     latency_ms_p90: float = 0.0
+    dominant_error_type: str | None = None
+    dominant_error_request_ids: list[int] = field(default_factory=list)
     error_id_spacing: dict = field(default_factory=dict)
+    isolated_errors: list[dict] = field(default_factory=list)
+    only_isolated_errors: bool = False
     warning_count: int = 0
     sample_warnings: list[str] = field(default_factory=list)
     unparsed_lines: int = 0
@@ -88,6 +94,7 @@ def correlate(log_text: str) -> LogSummary:
     """Parse raw log text into a structured summary. The pipeline's step 1."""
     summary = LogSummary()
     latencies: list[float] = []
+    ids_by_type: dict[str, list[int]] = {}
     seen_messages: list[str] = []
     seen_warnings: list[str] = []
 
@@ -118,6 +125,7 @@ def correlate(log_text: str) -> LogSummary:
             summary.error_request_ids.append(int(groups["request_id"]))
             error_type = groups["error_type"] or "UnknownError"
             summary.error_type_counts[error_type] = summary.error_type_counts.get(error_type, 0) + 1
+            ids_by_type.setdefault(error_type, []).append(int(groups["request_id"]))
             message = groups.get("message")
             if message and message not in seen_messages:
                 seen_messages.append(message)
@@ -127,7 +135,19 @@ def correlate(log_text: str) -> LogSummary:
     summary.sample_error_messages = seen_messages[:3]
     summary.sample_warnings = seen_warnings[:3]
     summary.error_request_ids.sort()
-    summary.error_id_spacing = _gap_profile(summary.error_request_ids)
+    # Spacing is measured on the most common error type, so that an unrelated
+    # transient beside a burst cannot extend the burst.
+    if ids_by_type:
+        dominant = max(ids_by_type, key=lambda name: (len(ids_by_type[name]), name))
+        summary.dominant_error_type = dominant
+        summary.dominant_error_request_ids = sorted(ids_by_type[dominant])
+        summary.only_isolated_errors = len(ids_by_type[dominant]) <= ISOLATED_ERROR_LIMIT
+        summary.isolated_errors = [
+            {"error_type": name, "request_ids": sorted(ids)}
+            for name, ids in sorted(ids_by_type.items())
+            if name != dominant
+        ]
+    summary.error_id_spacing = gap_profile(summary.dominant_error_request_ids)
 
     if latencies:
         summary.latency_ms_mean = round(sum(latencies) / len(latencies), 1)

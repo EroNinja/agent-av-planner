@@ -49,7 +49,8 @@ CREATE TABLE IF NOT EXISTS runs (
     recovery_action  TEXT,
     recovery_target  TEXT,
     recovery_valid   INTEGER,
-    failure_labels   TEXT
+    failure_labels   TEXT,
+    llm_call_count   INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS idx_runs_sweep    ON runs(sweep_id);
@@ -79,6 +80,7 @@ def init_db(conn: sqlite3.Connection) -> None:
         ("recovery_target", "TEXT"),
         ("recovery_valid", "INTEGER"),
         ("failure_labels", "TEXT"),
+        ("llm_call_count", "INTEGER"),
     ):
         if name not in columns:
             conn.execute(f"ALTER TABLE runs ADD COLUMN {name} {definition}")
@@ -107,8 +109,8 @@ def record_run(
             predicted_fault, correct, confidence, explanation, remediation, malformed,
             api_error, parse_error, evidence_score, evidence_checked, input_tokens,
             output_tokens, llm_latency_ms, payload, request_count, meets_proposal, grounded,
-            recovery_action, recovery_target, recovery_valid, failure_labels
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            recovery_action, recovery_target, recovery_valid, failure_labels, llm_call_count
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """,
         (
             datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -140,6 +142,7 @@ def record_run(
             recovery["target"] if recovery else None,
             None if recovery is None else int(recovery["valid"]),
             json.dumps(labels),
+            diagnosis.get("llm_call_count"),
         ),
     )
     conn.commit()

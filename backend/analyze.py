@@ -70,7 +70,16 @@ def main() -> None:
         print(f"  {'labels base':<15} {single['failure_labels'] or 'none'}")
         print(f"  {'labels pipe':<15} {pipeline['failure_labels'] or 'none'}")
         print(f"  {'tokens in':<15} {single['mean_input_tokens']} -> {pipeline['mean_input_tokens']}")
-        print(f"  {'tokens out':<15} {single['mean_output_tokens']} -> {pipeline['mean_output_tokens']}\n")
+        print(f"  {'tokens out':<15} {single['mean_output_tokens']} -> {pipeline['mean_output_tokens']}")
+        for name, other in arm["others"].items():
+            summary = other["summary"]
+            stats = other["vs_single"]
+            print(
+                f"  {name}: accuracy {pair(summary, 'accuracy')}  grounded {pair(summary, 'grounded')}  "
+                f"llm calls {summary['mean_llm_calls']}  tokens {summary['mean_input_tokens']}/{summary['mean_output_tokens']}  "
+                f"vs baseline only-baseline={stats['only_single']} only-this={stats['only_pipeline']} p={stats['p']:.3f}"
+            )
+        print()
 
 
 if __name__ == "__main__":

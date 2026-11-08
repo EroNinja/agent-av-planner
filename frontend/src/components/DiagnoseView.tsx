@@ -52,7 +52,7 @@ interface Props {
 export default function DiagnoseView({ providers, logs, refreshLogs }: Props) {
   const [provider, setProvider] = useState("mock");
   const [model, setModel] = useState("");
-  const [conditionMode, setConditionMode] = useState<"single_agent" | "pipeline" | "both">("both");
+  const [conditionMode, setConditionMode] = useState<Condition | "both">("both");
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<LogDetail | null>(null);
   const [runs, setRuns] = useState<ConditionRun[]>([]);
@@ -280,7 +280,7 @@ export default function DiagnoseView({ providers, logs, refreshLogs }: Props) {
               </select>
             </label>
             <div className="chips">
-              {(["single_agent", "pipeline", "both"] as const).map((mode) => (
+              {(["single_agent", "pipeline", "pipeline_no_spacing", "tool_agent", "both"] as const).map((mode) => (
                 <button
                   key={mode}
                   className="chip"

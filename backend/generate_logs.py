@@ -17,7 +17,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from incident_response.log_generator import generate_log, generate_suite
-from incident_response.taxonomy import FAULT_TYPES
+from incident_response.taxonomy import COMPOUND_FAULTS, FAULT_TYPES
 
 DEFAULT_LOGS_DIR = Path(__file__).resolve().parent / "logs"
 
@@ -30,6 +30,7 @@ def main() -> None:
     parser.add_argument("--suite", action="store_true", help="generate every fault type")
     parser.add_argument("--runs-per-fault", type=int, default=4)
     parser.add_argument("--requests", type=int, default=30, help="requests per run")
+    parser.add_argument("--compound", action="store_true", help="suite only: also generate two-fault runs")
     parser.add_argument(
         "--noise",
         action="store_true",
@@ -46,7 +47,7 @@ def main() -> None:
     if args.suite:
         records = generate_suite(
             args.logs_dir,
-            FAULT_TYPES,
+            FAULT_TYPES + COMPOUND_FAULTS if args.compound else FAULT_TYPES,
             args.runs_per_fault,
             request_count=args.requests,
             noise=args.noise,

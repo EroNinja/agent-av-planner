@@ -61,6 +61,8 @@ def assess_recovery(diagnosis: dict, meta: dict | None) -> dict | None:
     """Replay the diagnosis's plan. None when recovery was not requested or answered."""
     if meta is None or not diagnosis.get("recovery_requested") or diagnosis.get("api_error"):
         return None
+    if "+" in meta["fault_type"]:  # one action cannot cure two faults
+        return None
     plan = diagnosis.get("recovery") or {}
     if not plan.get("action"):
         return {

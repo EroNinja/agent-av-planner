@@ -128,7 +128,12 @@ def run_service(
     seed = _seed_for(fault_type, run_id, noise)
     rng = random.Random(seed)
 
-    failing = _failing_ids(fault_type, request_count, rng, noise)
+    parts = fault_type.split("+")
+    failing_kind: dict[int, str] = {}
+    for part in parts:
+        for rid in _failing_ids(part, request_count, rng, noise):
+            failing_kind[rid] = part
+    failing = sorted(failing_kind)
     run = ServiceRun(
         fault_type=fault_type,
         run_id=run_id,
@@ -149,8 +154,8 @@ def run_service(
                 red_herrings.add(rid)
     run.red_herring_request_ids = sorted(red_herrings)
 
-    latency_mean = SLOW_QUERY_LATENCY_MEAN if fault_type == "slow_query" else BASELINE_LATENCY_MEAN
-    latency_sd = SLOW_QUERY_LATENCY_SD if fault_type == "slow_query" else BASELINE_LATENCY_SD
+    latency_mean = SLOW_QUERY_LATENCY_MEAN if "slow_query" in parts else BASELINE_LATENCY_MEAN
+    latency_sd = SLOW_QUERY_LATENCY_SD if "slow_query" in parts else BASELINE_LATENCY_SD
     if noise:
         latency_sd *= 1.6  # wider spread makes the latency read less clean
 
@@ -160,7 +165,7 @@ def run_service(
         clock += timedelta(milliseconds=rng.randint(40, 180))
 
         if rid in failing:
-            error_type, message = NOISY_ERROR_SIGNATURE if noise else ERROR_SIGNATURES[fault_type]
+            error_type, message = NOISY_ERROR_SIGNATURE if noise else ERROR_SIGNATURES[failing_kind[rid]]
             run.events.append(
                 LogEvent(
                     timestamp=clock,

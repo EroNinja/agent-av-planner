@@ -3,14 +3,16 @@ import { api, type LogInfo, type ProviderInfo } from "./lib/api";
 import CompareView from "./components/CompareView";
 import DiagnoseView from "./components/DiagnoseView";
 import KeysDialog from "./components/KeysDialog";
+import RealLogView from "./components/RealLogView";
 import RunsView from "./components/RunsView";
 
-type Tab = "diagnose" | "compare" | "runs";
+type Tab = "diagnose" | "compare" | "runs" | "real";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "diagnose", label: "Diagnose" },
   { id: "compare", label: "Compare" },
   { id: "runs", label: "Runs" },
+  { id: "real", label: "Real log" },
 ];
 
 export default function App() {
@@ -81,6 +83,7 @@ export default function App() {
         )}
         {tab === "compare" && <CompareView providers={providers} logs={logs} />}
         {tab === "runs" && <RunsView />}
+        {tab === "real" && <RealLogView providers={providers} />}
       </main>
 
       <KeysDialog open={keysOpen} onClose={() => setKeysOpen(false)} onChanged={refreshProviders} />

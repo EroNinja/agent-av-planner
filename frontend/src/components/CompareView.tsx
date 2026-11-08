@@ -46,6 +46,8 @@ export default function CompareView({ providers, logs }: Props) {
   const [logSet, setLogSet] = useState<"clean" | "noisy" | "all">("noisy");
   const [length, setLength] = useState(30);
   const [recovery, setRecovery] = useState(false);
+  const [hint, setHint] = useState(true);
+  const [extras, setExtras] = useState<string[]>([]);
   const [analysis, setAnalysis] = useState<AnalysisArm[]>([]);
 
   const providerInfo = providers.find((candidate) => candidate.provider === pickProvider);
@@ -94,7 +96,8 @@ export default function CompareView({ providers, logs }: Props) {
     try {
       const started = await api.startSweep({
         arms,
-        conditions: ["single_agent", "pipeline"],
+        conditions: ["single_agent", "pipeline", ...extras],
+        hint,
         log_names: sweepLogs.map((log) => log.name),
         recovery,
       });
@@ -238,8 +241,27 @@ export default function CompareView({ providers, logs }: Props) {
 
         <div className="row">
           <button className="primary" onClick={runSweep} disabled={running || !arms.length || !sweepLogs.length}>
-            {running ? "Running…" : `Run sweep (${sweepLogs.length * arms.length * 2} calls)`}
+            {running ? "Running…" : `Run sweep (${sweepLogs.length * arms.length * (2 + extras.length)} diagnoses)`}
           </button>
+          {[
+            ["pipeline_no_spacing", "no-spacing pipeline"],
+            ["tool_agent", "tool agent"],
+          ].map(([id, label]) => (
+            <label className="toggle" key={id}>
+              <input
+                type="checkbox"
+                checked={extras.includes(id)}
+                onChange={(event) =>
+                  setExtras(event.target.checked ? [...extras, id] : extras.filter((item) => item !== id))
+                }
+              />
+              {label}
+            </label>
+          ))}
+          <label className="toggle" title="Removes the spread-versus-clustered rule from the prompt">
+            <input type="checkbox" checked={!hint} onChange={(event) => setHint(!event.target.checked)} />
+            remove hint
+          </label>
           <label className="toggle" title="Changes the prompt, so these runs are not comparable with runs without it">
             <input
               type="checkbox"
@@ -512,6 +534,51 @@ export default function CompareView({ providers, logs }: Props) {
                     <td className="num">{Math.round(arm.single_agent.mean_output_tokens ?? 0)} → {Math.round(arm.pipeline.mean_output_tokens ?? 0)}</td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {analysis.some((arm) => Object.keys(arm.others).length > 0) && (
+        <div className="card">
+          <div className="card-head">
+            <div>
+              <h3>Additional conditions</h3>
+              <p>Compared with the raw-log baseline on the same logs. The tool agent makes several LLM calls.</p>
+            </div>
+          </div>
+          <div className="scrollx">
+            <table className="data">
+              <thead>
+                <tr>
+                  <th className="mono">model</th>
+                  <th>condition</th>
+                  <th style={{ textAlign: "right" }}>pairs</th>
+                  <th style={{ textAlign: "right" }}>accuracy</th>
+                  <th style={{ textAlign: "right" }}>grounded</th>
+                  <th style={{ textAlign: "right" }}>p vs baseline</th>
+                  <th style={{ textAlign: "right" }}>LLM calls</th>
+                  <th style={{ textAlign: "right" }}>tokens in / out</th>
+                </tr>
+              </thead>
+              <tbody>
+                {analysis.flatMap((arm) =>
+                  Object.entries(arm.others).map(([name, other]) => (
+                    <tr key={`${arm.model}|${arm.request_count}|${name}`}>
+                      <td className="mono">{shortModel(arm.model)}</td>
+                      <td>{CONDITION_LABELS[name] ?? name}</td>
+                      <td className="num">{other.n_pairs}</td>
+                      <td className="num">{pct(other.summary.accuracy.rate)}</td>
+                      <td className="num">{pct(other.summary.grounded.rate)}</td>
+                      <td className="num">{num(other.vs_single.p, 3)}</td>
+                      <td className="num">{num(other.summary.mean_llm_calls, 1)}</td>
+                      <td className="num">
+                        {Math.round(other.summary.mean_input_tokens ?? 0)} / {Math.round(other.summary.mean_output_tokens ?? 0)}
+                      </td>
+                    </tr>
+                  )),
+                )}
               </tbody>
             </table>
           </div>

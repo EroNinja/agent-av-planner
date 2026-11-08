@@ -82,6 +82,7 @@ def _condition_summary(rows: list[dict]) -> dict:
         "malformed": sum(row["malformed"] for row in rows),
         "brier": brier_score(calibration),
         "ece": expected_calibration_error(calibration),
+        "mean_llm_calls": round(sum(row["llm_call_count"] or 1 for row in rows) / n, 2) if n else None,
         "mean_input_tokens": round(sum(row["input_tokens"] or 0 for row in rows) / n, 1) if n else None,
         "mean_output_tokens": round(sum(row["output_tokens"] or 0 for row in rows) / n, 1) if n else None,
     }
@@ -108,7 +109,7 @@ def analyze(conn: sqlite3.Connection, sweep_ids: list[str]) -> dict:
         f"""
         SELECT sweep_id, provider, model, request_count, log_name, condition, true_fault, correct,
                malformed, confidence, meets_proposal, grounded, input_tokens, output_tokens,
-               recovery_valid, failure_labels
+               recovery_valid, failure_labels, llm_call_count
         FROM runs
         WHERE sweep_id IN ({marks}) AND api_error = 0
         ORDER BY id
@@ -131,6 +132,14 @@ def analyze(conn: sqlite3.Connection, sweep_ids: list[str]) -> dict:
             for row in single
             if (row["sweep_id"], row["log_name"]) in by_log
         ]
+        others = {}
+        for name, rows in conditions.items():
+            if name in ("single_agent", "pipeline"):
+                continue
+            own = {(row["sweep_id"], row["log_name"]): row for row in rows}
+            matched = [(row, own[(row["sweep_id"], row["log_name"])]) for row in single if (row["sweep_id"], row["log_name"]) in own]
+            others[name] = {"summary": _condition_summary(rows), "n_pairs": len(matched), "vs_single": _paired(matched, "correct")}
+
         arms.append(
             {
                 "provider": provider,
@@ -139,6 +148,7 @@ def analyze(conn: sqlite3.Connection, sweep_ids: list[str]) -> dict:
                 "n_pairs": len(pairs),
                 "single_agent": _condition_summary(single),
                 "pipeline": _condition_summary(pipeline),
+                "others": others,
                 "paired": {key: _paired(pairs, key) for key in ("correct", "meets_proposal", "grounded", "recovery_valid")},
             }
         )

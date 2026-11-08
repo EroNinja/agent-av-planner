@@ -47,7 +47,7 @@ def _looks_rate_limited(error: str | None) -> bool:
     return any(marker in lowered for marker in RATE_LIMIT_MARKERS)
 
 
-def _diagnose_with_backoff(log_text: str, client, condition: str, recovery: bool = False):
+def _diagnose_with_backoff(log_text: str, client, condition: str, recovery: bool = False, hint: bool = True, compound: bool = False):
     """Retry only on rate limits. Every other failure is recorded as data.
 
     Groq's free tier is generous but per-minute capped, and a long sweep will
@@ -56,7 +56,7 @@ def _diagnose_with_backoff(log_text: str, client, condition: str, recovery: bool
     """
     attempt = 0
     while True:
-        result = diagnose(log_text, client, condition, recovery=recovery)
+        result = diagnose(log_text, client, condition, recovery=recovery, hint=hint, compound=compound)
         if not (result.api_error and _looks_rate_limited(result.parse_error)):
             return result
         if _is_daily_cap(result.parse_error) or attempt >= MAX_ATTEMPTS - 1:
@@ -104,6 +104,8 @@ def run_sweep_stream(
     conditions: Sequence[str] = CONDITIONS,
     sweep_id: str | None = None,
     recovery: bool = False,
+    hint: bool = True,
+    compound: bool = False,
 ) -> Iterator[dict]:
     """Execute a sweep, yielding one event per completed cell."""
     sweep_id = sweep_id or uuid.uuid4().hex[:12]
@@ -143,7 +145,7 @@ def run_sweep_stream(
         for record in balanced_order(records):
             log_text = record.text()
             for condition in conditions:
-                result = _diagnose_with_backoff(log_text, client, condition, recovery)
+                result = _diagnose_with_backoff(log_text, client, condition, recovery, hint, compound)
                 payload = result.to_dict()
                 run_id = record_run(
                     conn,

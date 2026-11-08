@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 import time
 
-from .base import LLMResponse, ProviderError
+from .base import LLMResponse, ProviderError, ToolCall, ToolTurn
 
 PROVIDER = "anthropic"
 
@@ -104,4 +104,54 @@ class AnthropicClient:
             output_tokens=getattr(usage, "output_tokens", 0) or 0,
             latency_ms=elapsed,
             raw_meta={"stop_reason": getattr(message, "stop_reason", None), "effort": EFFORT},
+        )
+
+    def complete_with_tools(self, system: str, messages: list[dict], tools: list[dict], max_tokens: int = 2048) -> ToolTurn:
+        started = time.perf_counter()
+        chat: list[dict] = []
+        for message in messages:
+            if message["role"] == "tool":
+                block = {"type": "tool_result", "tool_use_id": message["tool_call_id"], "content": message["content"]}
+                if chat and chat[-1]["role"] == "user" and isinstance(chat[-1]["content"], list):
+                    chat[-1]["content"].append(block)
+                else:
+                    chat.append({"role": "user", "content": [block]})
+            elif message["role"] == "assistant":
+                # Thinking and tool_use blocks must be replayed exactly as received.
+                chat.append({"role": "assistant", "content": message.get("provider_state") or message.get("content", "")})
+            else:
+                chat.append({"role": "user", "content": message["content"]})
+
+        kwargs: dict = {
+            "model": self.model,
+            "max_tokens": max_tokens,
+            "system": system,
+            "messages": chat,
+            "output_config": {"effort": EFFORT},
+        }
+        if tools:
+            kwargs["tools"] = [
+                {"name": tool["name"], "description": tool["description"], "input_schema": tool["parameters"]}
+                for tool in tools
+            ]
+
+        try:
+            response = self._client.messages.create(**kwargs)
+        except Exception as exc:  # noqa: BLE001 - surfaced to the caller as data
+            return ToolTurn(text="", latency_ms=(time.perf_counter() - started) * 1000, error=f"{type(exc).__name__}: {exc}")
+
+        text = "".join(block.text for block in response.content if block.type == "text")
+        calls = [
+            ToolCall(id=block.id, name=block.name, arguments=dict(block.input or {}))
+            for block in response.content
+            if block.type == "tool_use"
+        ]
+        return ToolTurn(
+            text=text,
+            tool_calls=calls,
+            input_tokens=response.usage.input_tokens or 0,
+            output_tokens=response.usage.output_tokens or 0,
+            latency_ms=(time.perf_counter() - started) * 1000,
+            error="refusal" if response.stop_reason == "refusal" else None,
+            provider_state=[block.model_dump(exclude_none=True) for block in response.content],
         )

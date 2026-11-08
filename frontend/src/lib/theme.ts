@@ -8,6 +8,8 @@
 export const SERIES = {
   single_agent: "#2a78d6",
   pipeline: "#eb6834",
+  pipeline_no_spacing: "#1baf7a",
+  tool_agent: "#6250d6",
 } as const;
 
 export const STATUS = {
@@ -27,6 +29,8 @@ export const FAULT_COLORS: Record<string, string> = {
 export const CONDITION_LABELS: Record<string, string> = {
   single_agent: "Single-agent baseline",
   pipeline: "Multi-agent pipeline",
+  pipeline_no_spacing: "Pipeline without spacing fields",
+  tool_agent: "Tool-using agent",
 };
 
 export const FAULT_LABELS: Record<string, string> = {

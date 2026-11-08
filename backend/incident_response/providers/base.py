@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 
 @dataclass
@@ -38,6 +38,26 @@ class LLMResponse:
     @property
     def ok(self) -> bool:
         return self.error is None
+
+
+@dataclass
+class ToolCall:
+    id: str
+    name: str
+    arguments: dict
+
+
+@dataclass
+class ToolTurn:
+    """One model turn in a tool-using conversation."""
+
+    text: str
+    tool_calls: list[ToolCall] = field(default_factory=list)
+    input_tokens: int = 0
+    output_tokens: int = 0
+    latency_ms: float = 0.0
+    error: str | None = None
+    provider_state: Any = None
 
 
 @runtime_checkable

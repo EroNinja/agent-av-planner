@@ -12,10 +12,11 @@ is a fallback -- `list_live_models()` asks the API what is actually served.
 
 from __future__ import annotations
 
+import json
 import os
 import time
 
-from .base import LLMResponse, ProviderError
+from .base import LLMResponse, ProviderError, ToolCall, ToolTurn
 
 PROVIDER = "groq"
 BASE_URL = "https://api.groq.com/openai/v1"
@@ -114,4 +115,58 @@ class GroqClient:
             output_tokens=getattr(usage, "completion_tokens", 0) or 0,
             latency_ms=elapsed,
             raw_meta={"finish_reason": getattr(choice, "finish_reason", None) if choice else None},
+        )
+
+    def complete_with_tools(self, system: str, messages: list[dict], tools: list[dict], max_tokens: int = 2048) -> ToolTurn:
+        started = time.perf_counter()
+        chat: list[dict] = [{"role": "system", "content": system}]
+        for message in messages:
+            if message["role"] == "assistant" and message.get("tool_calls"):
+                chat.append(
+                    {
+                        "role": "assistant",
+                        "content": message.get("content") or "",
+                        "tool_calls": [
+                            {
+                                "id": call.id,
+                                "type": "function",
+                                "function": {"name": call.name, "arguments": json.dumps(call.arguments)},
+                            }
+                            for call in message["tool_calls"]
+                        ],
+                    }
+                )
+            elif message["role"] == "tool":
+                chat.append({"role": "tool", "tool_call_id": message["tool_call_id"], "content": message["content"]})
+            else:
+                chat.append({"role": message["role"], "content": message["content"]})
+
+        kwargs: dict = {"model": self.model, "max_tokens": max_tokens, "temperature": 0, "messages": chat}
+        if tools:
+            kwargs["tools"] = [
+                {"type": "function", "function": {key: tool[key] for key in ("name", "description", "parameters")}}
+                for tool in tools
+            ]
+            kwargs["tool_choice"] = "auto"
+
+        try:
+            completion = self._client.chat.completions.create(**kwargs)
+        except Exception as exc:  # noqa: BLE001 - surfaced to the caller as data
+            return ToolTurn(text="", latency_ms=(time.perf_counter() - started) * 1000, error=f"{type(exc).__name__}: {exc}")
+
+        message = completion.choices[0].message
+        calls = []
+        for call in message.tool_calls or []:
+            try:
+                arguments = json.loads(call.function.arguments or "{}")
+            except json.JSONDecodeError:
+                arguments = {}
+            calls.append(ToolCall(id=call.id, name=call.function.name, arguments=arguments if isinstance(arguments, dict) else {}))
+        usage = getattr(completion, "usage", None)
+        return ToolTurn(
+            text=message.content or "",
+            tool_calls=calls,
+            input_tokens=getattr(usage, "prompt_tokens", 0) or 0,
+            output_tokens=getattr(usage, "completion_tokens", 0) or 0,
+            latency_ms=(time.perf_counter() - started) * 1000,
         )

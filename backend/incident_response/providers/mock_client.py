@@ -18,7 +18,7 @@ import time
 
 from ..agents.log_correlator import _longest_contiguous_run
 from ..taxonomy import VALID_RECOVERY
-from .base import LLMResponse
+from .base import LLMResponse, ToolCall, ToolTurn
 
 PROVIDER = "mock"
 DEFAULT_MODEL = "mock-heuristic"
@@ -113,6 +113,7 @@ class MockClient:
             "confidence": confidence,
             "ranked_alternatives": ranked,
             "recovery": {"action": VALID_RECOVERY[fault][0], "target": VALID_RECOVERY[fault][1]},
+            "additional_faults": ["slow_query"] if fault != "slow_query" and fault != "no_fault" and _mean_latency(user) > 150 else [],
         }
 
         return LLMResponse(
@@ -124,3 +125,14 @@ class MockClient:
             latency_ms=(time.perf_counter() - started) * 1000,
             raw_meta={"synthetic": True},
         )
+
+    def complete_with_tools(self, system: str, messages: list[dict], tools: list[dict], max_tokens: int = 2048) -> ToolTurn:
+        """Inspect the overview, then the failing ids, then answer from what came back."""
+        seen = [message for message in messages if message["role"] == "tool"]
+        plan = ["get_overview", "list_errors"]
+        if tools and len(seen) < len(plan):
+            name = plan[len(seen)]
+            return ToolTurn(text="", tool_calls=[ToolCall(id=f"mock-{len(seen)}", name=name, arguments={})], input_tokens=50, output_tokens=10)
+        evidence = " ".join(message["content"] for message in seen)
+        reply = self.complete(system, evidence, max_tokens)
+        return ToolTurn(text=reply.text, input_tokens=reply.input_tokens, output_tokens=reply.output_tokens)

@@ -1,5 +1,5 @@
 export type FaultType = "dependency_down" | "slow_query" | "pool_exhausted" | "no_fault";
-export type Condition = "single_agent" | "pipeline";
+export type Condition = "single_agent" | "pipeline" | "pipeline_no_spacing" | "tool_agent";
 
 export interface ProviderInfo {
   provider: string;
@@ -93,7 +93,7 @@ export interface RecoveryResult {
 export interface TraceEvent {
   type: "run_start" | "step_start" | "step_done" | "result" | "error";
   agent?: string;
-  kind?: "deterministic" | "llm";
+  kind?: "deterministic" | "llm" | "tool";
   output?: Record<string, unknown>;
   input_preview?: string;
   result?: DiagnosisResult;
@@ -191,7 +191,32 @@ export interface PairedStat {
   p: number;
 }
 
+export interface OtherCondition {
+  summary: ConditionAnalysis & { mean_llm_calls: number | null };
+  n_pairs: number;
+  vs_single: PairedStat;
+}
+
+export interface RealLogPreview {
+  redactions: Record<string, number>;
+  summary: { total_lines: number; error_lines: number; line_formats: Record<string, number> };
+  sample: string[];
+}
+
+export interface RealLogResult {
+  error?: string;
+  needs_human?: boolean;
+  hypotheses?: {
+    label: string;
+    cause: string;
+    confidence: number | null;
+    evidence: { quote: string; found_in_log: boolean }[];
+  }[];
+  next_checks?: string[];
+}
+
 export interface AnalysisArm {
+  others: Record<string, OtherCondition>;
   provider: string;
   model: string;
   request_count: number | null;
@@ -280,6 +305,13 @@ export const api = {
     json<{ sweep_ids: string[]; arms: AnalysisArm[] }>(
       `/api/analysis${sweepId ? `?sweep_ids=${sweepId}` : ""}`,
     ),
+  realLogPreview: (text: string) =>
+    json<RealLogPreview>("/api/real-log/preview", { method: "POST", body: JSON.stringify({ text }) }),
+  realLogDiagnose: (text: string, provider: string, model: string) =>
+    json<RealLogResult>("/api/real-log/diagnose", {
+      method: "POST",
+      body: JSON.stringify({ text, provider, model }),
+    }),
   keys: () => json<{ providers: KeyProvider[] }>("/api/keys"),
   addKey: (body: { provider: string; label: string; value: string; activate: boolean }) =>
     json<{ providers: KeyProvider[] }>("/api/keys", { method: "POST", body: JSON.stringify(body) }),

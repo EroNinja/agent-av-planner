@@ -2,7 +2,7 @@ import type { TraceEvent } from "../lib/api";
 
 interface StepState {
   agent: string;
-  kind: "deterministic" | "llm";
+  kind: "deterministic" | "llm" | "tool";
   status: "running" | "done";
   output?: Record<string, unknown>;
 }
@@ -12,6 +12,13 @@ const AGENT_BLURB: Record<string, string> = {
   hypothesis_agent: "the single model call",
   runbook_agent: "fixed remediation lookup",
 };
+
+function blurbFor(agent: string): string {
+  if (agent.startsWith("agent_decision")) return "the model decides what to do next";
+  if (agent.startsWith("tool_")) return "read-only log tool";
+  if (agent.startsWith("self_check")) return "citations compared with the log";
+  return AGENT_BLURB[agent] ?? "";
+}
 
 export function deriveSteps(events: TraceEvent[]): StepState[] {
   const steps: StepState[] = [];
@@ -94,11 +101,16 @@ export default function AgentTrace({ events }: { events: TraceEvent[] }) {
               {step.status === "running" ? <span className="spinner" /> : "done"}
             </span>
           </div>
-          <p className="muted" style={{ margin: "3px 0 0" }}>{AGENT_BLURB[step.agent] ?? ""}</p>
+          <p className="muted" style={{ margin: "3px 0 0" }}>{blurbFor(step.agent)}</p>
 
           {step.status === "done" && step.output && step.agent === "log_correlator" && (
             <div className="step-body">
               <SummaryPreview output={step.output} />
+            </div>
+          )}
+          {step.status === "done" && step.output && /^(tool_|agent_decision|self_check)/.test(step.agent) && (
+            <div className="step-body">
+              <pre className="json">{JSON.stringify(step.output, null, 2)}</pre>
             </div>
           )}
           {step.status === "done" && step.output && step.agent === "runbook_agent" && (

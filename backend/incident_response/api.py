@@ -30,11 +30,12 @@ from pydantic import BaseModel, Field
 
 from . import db
 from .analysis import analyze
-from .conditions import CONDITIONS, diagnose_stream
+from .conditions import ALL_CONDITIONS, CONDITIONS, diagnose_stream
 from .evaluation import Arm, plan_size, run_sweep_stream, validate_arms
 from .key_store import KeyStore, KeyStoreError
 from .log_generator import discover_logs, generate_log, generate_suite
 from .providers import PROVIDERS, get_client, provider_catalog, verify_key
+from .real_logs import MAX_LOG_BYTES, diagnose_real, preview as preview_real_log
 from .recovery import assess_recovery
 from .providers.base import ProviderError
 from .taxonomy import FAULT_DESCRIPTIONS, FAULT_TYPES, RUNBOOK
@@ -108,6 +109,12 @@ class DiagnoseRequest(BaseModel):
     recovery: bool = False
 
 
+class RealLogRequest(BaseModel):
+    text: str
+    provider: str = "mock"
+    model: str | None = None
+
+
 class AddKeyRequest(BaseModel):
     provider: str
     label: str = ""
@@ -120,6 +127,7 @@ class SweepRequest(BaseModel):
     conditions: list[str] = Field(default_factory=lambda: list(CONDITIONS))
     log_names: list[str] | None = None
     recovery: bool = False
+    hint: bool = True
 
 
 # --------------------------------------------------------------------------
@@ -215,6 +223,33 @@ def test_key(provider: str, key_id: str) -> dict:
 
 
 # --------------------------------------------------------------------------
+# Real logs (advisory, never stored)
+# --------------------------------------------------------------------------
+
+def _check_real_log(text: str) -> None:
+    if not text.strip():
+        raise HTTPException(status_code=400, detail="the log is empty")
+    if len(text.encode("utf-8")) > MAX_LOG_BYTES:
+        raise HTTPException(status_code=413, detail="the log is larger than 5 MB")
+
+
+@app.post("/api/real-log/preview")
+def real_log_preview(request: RealLogRequest) -> dict:
+    _check_real_log(request.text)
+    return preview_real_log(request.text)
+
+
+@app.post("/api/real-log/diagnose")
+def real_log_diagnose(request: RealLogRequest) -> dict:
+    _check_real_log(request.text)
+    try:
+        client = get_client(request.provider, request.model)
+    except ProviderError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return diagnose_real(request.text, client)
+
+
+# --------------------------------------------------------------------------
 # Logs
 # --------------------------------------------------------------------------
 
@@ -272,7 +307,7 @@ def _resolve_log(name: str):
 
 @app.post("/api/diagnose/stream")
 def diagnose_streaming(request: DiagnoseRequest) -> StreamingResponse:
-    if request.condition not in CONDITIONS:
+    if request.condition not in ALL_CONDITIONS:
         raise HTTPException(status_code=400, detail=f"unknown condition '{request.condition}'")
 
     record = _resolve_log(request.log_name)
@@ -345,11 +380,11 @@ _sweeps: dict[str, SweepJob] = {}
 _sweeps_lock = threading.Lock()
 
 
-def _run_sweep_job(job: SweepJob, records, arms, conditions, recovery: bool = False) -> None:
+def _run_sweep_job(job: SweepJob, records, arms, conditions, recovery: bool = False, hint: bool = True) -> None:
     conn = db.connect(DB_PATH)
     try:
         for event in run_sweep_stream(
-            records, arms, conn, conditions=conditions, sweep_id=job.sweep_id, recovery=recovery
+            records, arms, conn, conditions=conditions, sweep_id=job.sweep_id, recovery=recovery, hint=hint
         ):
             job.append(event)
     except Exception as exc:  # noqa: BLE001
@@ -372,7 +407,7 @@ def start_sweep(request: SweepRequest) -> dict:
 
     conditions = request.conditions or list(CONDITIONS)
     for condition in conditions:
-        if condition not in CONDITIONS:
+        if condition not in ALL_CONDITIONS:
             raise HTTPException(status_code=400, detail=f"unknown condition '{condition}'")
 
     arms: list[Arm] = []
@@ -393,7 +428,7 @@ def start_sweep(request: SweepRequest) -> dict:
         _sweeps[sweep_id] = job
 
     thread = threading.Thread(
-        target=_run_sweep_job, args=(job, records, arms, conditions, request.recovery), daemon=True
+        target=_run_sweep_job, args=(job, records, arms, conditions, request.recovery, request.hint), daemon=True
     )
     thread.start()
 

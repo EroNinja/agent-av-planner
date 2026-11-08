@@ -204,6 +204,36 @@ Every run also gets rule-based problem labels, such as `false_alarm`,
 
 ---
 
+## Experiment variants
+
+Each is opt-in, so earlier sweeps stay comparable.
+
+| Option | What it does |
+|---|---|
+| `--conditions single_agent,pipeline,pipeline_no_spacing` | Adds a pipeline given only the proposal's summary fields, to test whether gains come from structure or from the spacing feature |
+| `--conditions ...,tool_agent` | Adds an agent that chooses read-only log tools, up to 5 rounds, and gets one chance to correct citations an automatic check could not confirm. It makes several LLM calls |
+| `--no-hint` | Removes the spread-versus-clustered rule from the prompt |
+| `--compound` with `generate_logs.py --suite --compound` | Adds two-fault runs, scored as an exact set |
+
+The summary measures failure spacing on the most common error type and lists other
+error types separately, so an unrelated transient cannot extend a burst.
+
+## Real logs
+
+The **Real log** tab accepts JSON lines, key=value or plain text up to 5 MB. Secrets and
+personal data are removed first, you can review exactly what will be sent, and the model
+sees only a summary and a sample of lines. Results are advisory, low-confidence or
+unconfirmed answers ask for a person to investigate, and nothing is stored. Automatic
+redaction can miss things, so review the sample before sending logs from a real system.
+
+## Docker
+
+```bash
+docker compose up --build
+```
+
+Then open http://localhost:8080. Put keys in `backend/.env` before starting.
+
 ## Tests
 
 Offline checks that make no API calls. Run them from `backend/`:
@@ -218,6 +248,14 @@ python tests/check_key_store.py
 
 ```bash
 python tests/check_recovery_labels.py
+```
+
+```bash
+python tests/check_agent_variants.py
+```
+
+```bash
+python tests/check_real_logs.py
 ```
 
 ---

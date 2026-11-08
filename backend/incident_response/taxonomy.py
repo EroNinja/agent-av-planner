@@ -7,6 +7,9 @@ prompts in `agents/hypothesis_agent.py` are built from it.
 
 from __future__ import annotations
 
+# Two faults at once. Used only by the compound dataset.
+COMPOUND_FAULTS: list[str] = ["dependency_down+slow_query", "pool_exhausted+slow_query"]
+
 # The fixed classification taxonomy. `no_fault` is the control label.
 FAULT_TYPES: list[str] = [
     "dependency_down",
@@ -128,4 +131,4 @@ def is_valid_fault(name: str) -> bool:
 
 def remediation_for(fault_type: str) -> str:
     """The Runbook Agent. Deterministic dictionary lookup, no model involved."""
-    return RUNBOOK.get(fault_type, RUNBOOK["no_fault"])
+    return " ".join(RUNBOOK.get(part, RUNBOOK["no_fault"]) for part in fault_type.split("+"))

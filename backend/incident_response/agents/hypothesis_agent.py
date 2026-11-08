@@ -33,10 +33,7 @@ Rules:
 - Cite concrete evidence that actually appears in the data you were given: request \
 ids, error type names, counts, or latency figures. Never invent a value you cannot \
 point to in the input.
-- Distinguish carefully between failures that are SPREAD ACROSS the run and failures \
-that are CLUSTERED into a contiguous block of consecutive request ids. Both can \
-produce the same error count; the distribution is what separates them.
-- A healthy run may still contain isolated unrelated warnings or a one-off transient \
+{spread_rule}- A healthy run may still contain isolated unrelated warnings or a one-off transient \
 error. Those are not an injected fault. Report `no_fault` rather than inventing one.
 - Baseline latency for a healthy run of this service is roughly 45ms.
 - `confidence` is your genuine posterior that `predicted_fault` is correct, in [0, 1].
@@ -56,6 +53,18 @@ markdown code fences:
 `ranked_alternatives` must list all {n} candidate labels in descending confidence."""
 
 
+SPREAD_RULE = (
+    "- Distinguish carefully between failures that are SPREAD ACROSS the run and failures "
+    "that are CLUSTERED into a contiguous block of consecutive request ids. Both can "
+    "produce the same error count; the distribution is what separates them.\n"
+)
+
+COMPOUND_INSTRUCTIONS = (
+    "\n\nMore than one fault can be present in a run. Add an `additional_faults` field to the "
+    "JSON object: a list of any other fault labels that are also present, or an empty list."
+)
+
+
 def _recovery_instructions() -> str:
     actions = "\n".join(f"- {name}: {text}" for name, text in RECOVERY_ACTIONS.items())
     targets = "\n".join(f"- {name}: {text}" for name, text in RECOVERY_TARGETS.items())
@@ -67,13 +76,16 @@ def _recovery_instructions() -> str:
     )
 
 
-def system_prompt(recovery: bool = False) -> str:
+def system_prompt(recovery: bool = False, hint: bool = True, compound: bool = False) -> str:
     taxonomy = "\n".join(f"- {name}: {desc}" for name, desc in FAULT_DESCRIPTIONS.items())
     base = SYSTEM_PROMPT.format(
         taxonomy=taxonomy,
         labels=", ".join(FAULT_TYPES),
         n=len(FAULT_TYPES),
+        spread_rule=SPREAD_RULE if hint else "",
     )
+    if compound:
+        base += COMPOUND_INSTRUCTIONS
     return base + _recovery_instructions() if recovery else base
 
 
@@ -87,16 +99,36 @@ def raw_log_payload(log_text: str) -> str:
     )
 
 
+SPACING_FIELDS = (
+    "dominant_error_type",
+    "dominant_error_request_ids",
+    "error_id_spacing",
+    "isolated_errors",
+    "only_isolated_errors",
+)
+
+
+def without_spacing(summary: dict) -> dict:
+    """The summary fields the proposal specified, without derived spacing signals."""
+    return {key: value for key, value in summary.items() if key not in SPACING_FIELDS}
+
+
 def summary_payload(summary: dict) -> str:
+    notes = "Field notes: `error_request_ids` lists which requests failed. "
+    if "error_id_spacing" in summary:
+        notes += (
+            "`error_id_spacing` describes the most common error type only: `gaps` gives the distance "
+            "between consecutive failing ids and `max_contiguous_run` the longest unbroken block. "
+            "`isolated_errors` lists other error types, and `only_isolated_errors` is true when no "
+            "error type occurred more than twice."
+        )
     return (
         "Below is a structured summary of one run of the service, produced by a "
         "deterministic log parser. You are not shown the raw log.\n\n"
         "----- BEGIN SUMMARY -----\n"
         f"{json.dumps(summary, indent=2)}\n"
         "----- END SUMMARY -----\n\n"
-        "Field notes: `error_request_ids` lists which requests failed. "
-        "`error_id_spacing.gaps` gives the distance between consecutive failing ids and "
-        "`error_id_spacing.max_contiguous_run` the longest unbroken block of them.\n\n"
+        f"{notes}\n\n"
         "Classify which fault type produced this run."
     )
 
@@ -156,9 +188,16 @@ def _extract_recovery(parsed: dict) -> dict | None:
     return {"action": str(plan.get("action", "")).strip(), "target": str(plan.get("target", "")).strip()}
 
 
-def run_hypothesis(client: LLMClient, payload: str, recovery: bool = False) -> Hypothesis:
+def run_hypothesis(
+    client: LLMClient, payload: str, recovery: bool = False, hint: bool = True, compound: bool = False
+) -> Hypothesis:
     """Make the single model call and parse its answer tolerantly."""
-    response = client.complete(system_prompt(recovery), payload, max_tokens=MAX_TOKENS)
+    response = client.complete(system_prompt(recovery, hint, compound), payload, max_tokens=MAX_TOKENS)
+    return parse_answer(response, compound)
+
+
+def parse_answer(response: LLMResponse, compound: bool = False) -> Hypothesis:
+    """Turn a model response into a Hypothesis, recording anything that went wrong."""
 
     if not response.ok:
         return Hypothesis(
@@ -194,6 +233,12 @@ def run_hypothesis(client: LLMClient, payload: str, recovery: bool = False) -> H
             parse_error=f"predicted_fault {predicted!r} is not in the taxonomy",
             response=response,
         )
+
+    if compound:
+        extras = parsed.get("additional_faults")
+        extras = [item for item in extras if item in FAULT_TYPES and item != "no_fault"] if isinstance(extras, list) else []
+        faults = sorted({predicted, *extras} - ({"no_fault"} if extras else set()))
+        predicted = "+".join(faults)
 
     alternatives = parsed.get("ranked_alternatives")
     if not isinstance(alternatives, list):

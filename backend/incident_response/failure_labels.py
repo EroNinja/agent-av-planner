@@ -45,7 +45,9 @@ def label_run(
         labels.append("invented_evidence")
 
     if predicted and predicted != true_fault:
-        if true_fault == "no_fault":
+        if "+" in true_fault or "+" in predicted:
+            labels.append("wrong_fault_set")
+        elif true_fault == "no_fault":
             labels.append("false_alarm")
         elif predicted == "no_fault":
             labels.append("missed_fault")

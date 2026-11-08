@@ -19,16 +19,22 @@ from dataclasses import asdict, dataclass, field
 from typing import Iterator
 
 from .agents import runbook_agent
-from .agents.hypothesis_agent import raw_log_payload, run_hypothesis, summary_payload
+from .agents.hypothesis_agent import raw_log_payload, run_hypothesis, summary_payload, without_spacing
 from .agents.log_correlator import correlate
+from .agents.tool_agent import run_tool_agent
 from .evidence import EvidenceReport, score_evidence
 from .providers.base import LLMClient
 
 CONDITIONS = ("single_agent", "pipeline")
+EXTRA_CONDITIONS = ("pipeline_no_spacing", "tool_agent")
+ALL_CONDITIONS = CONDITIONS + EXTRA_CONDITIONS
+SUMMARY_CONDITIONS = ("pipeline", "pipeline_no_spacing")
 
 CONDITION_LABELS = {
     "single_agent": "Single-agent baseline",
     "pipeline": "Multi-agent pipeline",
+    "pipeline_no_spacing": "Pipeline without spacing fields",
+    "tool_agent": "Tool-using agent",
 }
 
 
@@ -55,6 +61,9 @@ class Diagnosis:
     evidence: dict | None = None
     recovery_requested: bool = False
     recovery: dict | None = None
+    prompt_hint: bool = True
+    compound: bool = False
+    tool_trace: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -97,10 +106,15 @@ def _finalize(
 
 
 def diagnose_stream(
-    log_text: str, client: LLMClient, condition: str, recovery: bool = False
+    log_text: str,
+    client: LLMClient,
+    condition: str,
+    recovery: bool = False,
+    hint: bool = True,
+    compound: bool = False,
 ) -> Iterator[dict]:
     """Run one condition, yielding a trace event per agent step, then the result."""
-    if condition not in CONDITIONS:
+    if condition not in ALL_CONDITIONS:
         raise ValueError(f"unknown condition '{condition}'")
 
     started = time.perf_counter()
@@ -119,35 +133,50 @@ def diagnose_stream(
     # evidence afterwards. It is never shown to the single-agent model.
     summary = correlate(log_text)
 
-    if condition == "pipeline":
-        yield {"type": "step_start", "agent": "log_correlator", "kind": "deterministic"}
-        agent_call_log.append("log_correlator (deterministic)")
+    llm_calls = 1
+    tool_trace: list[dict] = []
+
+    if condition == "tool_agent":
+        hypothesis = None
+        agent_call_log.append("tool_agent (LLM with read-only tools)")
+        for event in run_tool_agent(log_text, client, recovery=recovery, hint=hint, compound=compound):
+            if event["type"] == "agent_done":
+                hypothesis, llm_calls, tool_trace = event["hypothesis"], event["llm_calls"], event["tool_trace"]
+            else:
+                yield event
+    else:
+        if condition in SUMMARY_CONDITIONS:
+            yield {"type": "step_start", "agent": "log_correlator", "kind": "deterministic"}
+            agent_call_log.append("log_correlator (deterministic)")
+            shown = summary.to_dict()
+            if condition == "pipeline_no_spacing":
+                shown = without_spacing(shown)
+            yield {
+                "type": "step_done",
+                "agent": "log_correlator",
+                "kind": "deterministic",
+                "output": shown,
+            }
+            payload = summary_payload(shown)
+        else:
+            payload = raw_log_payload(log_text)
+
+        yield {
+            "type": "step_start",
+            "agent": "hypothesis_agent",
+            "kind": "llm",
+            "input_preview": payload[:600],
+        }
+        agent_call_log.append("hypothesis_agent (LLM)")
+
+        hypothesis = run_hypothesis(client, payload, recovery=recovery, hint=hint, compound=compound)
+
         yield {
             "type": "step_done",
-            "agent": "log_correlator",
-            "kind": "deterministic",
-            "output": summary.to_dict(),
+            "agent": "hypothesis_agent",
+            "kind": "llm",
+            "output": hypothesis.to_dict(),
         }
-        payload = summary_payload(summary.to_dict())
-    else:
-        payload = raw_log_payload(log_text)
-
-    yield {
-        "type": "step_start",
-        "agent": "hypothesis_agent",
-        "kind": "llm",
-        "input_preview": payload[:600],
-    }
-    agent_call_log.append("hypothesis_agent (LLM)")
-
-    hypothesis = run_hypothesis(client, payload, recovery=recovery)
-
-    yield {
-        "type": "step_done",
-        "agent": "hypothesis_agent",
-        "kind": "llm",
-        "output": hypothesis.to_dict(),
-    }
 
     yield {"type": "step_start", "agent": "runbook_agent", "kind": "deterministic"}
     agent_call_log.append("runbook_agent (deterministic)")
@@ -162,13 +191,24 @@ def diagnose_stream(
     result = _finalize(condition, client, hypothesis, log_text, summary, agent_call_log, started)
     result.recovery_requested = recovery
     result.recovery = hypothesis.recovery
+    result.llm_call_count = llm_calls
+    result.prompt_hint = hint
+    result.compound = compound
+    result.tool_trace = tool_trace
     yield {"type": "result", "result": result.to_dict()}
 
 
-def diagnose(log_text: str, client: LLMClient, condition: str, recovery: bool = False) -> Diagnosis:
+def diagnose(
+    log_text: str,
+    client: LLMClient,
+    condition: str,
+    recovery: bool = False,
+    hint: bool = True,
+    compound: bool = False,
+) -> Diagnosis:
     """Non-streaming convenience wrapper. Returns the final Diagnosis."""
     final: dict | None = None
-    for event in diagnose_stream(log_text, client, condition, recovery=recovery):
+    for event in diagnose_stream(log_text, client, condition, recovery=recovery, hint=hint, compound=compound):
         if event["type"] == "result":
             final = event["result"]
     if final is None:  # pragma: no cover - diagnose_stream always ends in a result
