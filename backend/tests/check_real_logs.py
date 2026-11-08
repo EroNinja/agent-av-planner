@@ -18,12 +18,13 @@ def check(name, ok, detail=""):
         fails.append(name)
 
 
-# Made-up values only.
+# Made-up values only. Built at runtime so no key-shaped text is committed.
+FAKE_KEY = "gsk_" + "a" * 24
 CASES = [
     ("email", "user=jane.doe@example.com failed", "jane.doe@example.com", "email"),
     ("ip", "connect from 10.2.3.4 refused", "10.2.3.4", "ip_address"),
     ("bearer", "Authorization: Bearer abcDEF123456789xyz", "abcDEF123456789xyz", "bearer_token"),
-    ("groq key", "key gsk_aaaaaaaaaaaaaaaaaaaaaaaa used", "gsk_aaaaaaaaaaaaaaaaaaaaaaaa", "api_key"),
+    ("groq key", f"key {FAKE_KEY} used", FAKE_KEY, "api_key"),
     ("password field", "password=hunter2 rejected", "hunter2", "secret_field"),
     ("json token", '{"api_key": "abc123secret"}', "abc123secret", "secret_field"),
     ("url credentials", "postgres://admin:s3cret@db.internal/app", "s3cret", "url_credentials"),
