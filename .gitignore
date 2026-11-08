@@ -1,0 +1,27 @@
+# secrets
+.env
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# generated data
+backend/logs/*.log
+backend/logs/*.meta.json
+backend/outputs/*.csv
+backend/data/keys.json
+backend/data/*.tmp
+backend/.env.*.tmp
+backend/data/*.db
+backend/data/*.db-wal
+backend/data/*.db-shm
+
+# node
+node_modules/
+frontend/dist/
+frontend/tsconfig.tsbuildinfo
+
+backend/logs/noisy10/
+backend/logs/*/

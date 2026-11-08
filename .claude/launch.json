@@ -1,0 +1,22 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "frontend", "run", "dev"],
+      "port": 5173
+    },
+    {
+      "name": "backend",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m", "uvicorn",
+        "--app-dir", "backend",
+        "incident_response.api:app",
+        "--port", "8000"
+      ],
+      "port": 8000
+    }
+  ]
+}
