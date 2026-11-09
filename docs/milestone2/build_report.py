@@ -416,7 +416,7 @@ B.append(
 B.append(
     p(
         "**Scope and next steps.** D1 to D3 provide clean ground truth for controlled comparison across four known classes, and D4 extends the evaluation to deployed systems with logs as the evidence source. "
-        "Because the parser was developed alongside D1 to D3, D4 serves as the independent test, and its design was fixed before that data was examined. "
+        "Because the parser was developed alongside D1 to D3, D4 serves as the independent test, and its summary method was not changed after results were seen. "
         "Larger evaluations and a live Claude run are planned. A real-log mode with automatic redaction is available on branch `final-work`, and Section 6 prioritizes its evaluation alongside the full benchmark."
     )
 )
