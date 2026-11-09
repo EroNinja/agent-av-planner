@@ -226,6 +226,17 @@ sees only a summary and a sample of lines. Results are advisory, low-confidence 
 unconfirmed answers ask for a person to investigate, and nothing is stored. Automatic
 redaction can miss things, so review the sample before sending logs from a real system.
 
+## Public benchmark: RCAEval RE3
+
+`evaluate_rcaeval.py` asks which service caused each failure, using the
+[RCAEval](https://zenodo.org/records/14590730) RE3 archives placed in `backend/external/rcaeval/`
+(CC-BY-4.0, not included in this repository). It compares a rules control, a sample of raw log
+lines, and a per-service summary, scored by Top-1 and Top-3 accuracy.
+
+```bash
+python evaluate_rcaeval.py --per-system 10 --arm groq:qwen/qwen3.8-27b
+```
+
 ## Docker
 
 ```bash

@@ -25,6 +25,7 @@ jobs:
       - run: python tests/check_recovery_labels.py
       - run: python tests/check_agent_variants.py
       - run: python tests/check_real_logs.py
+      - run: python tests/check_rcaeval.py
       - name: API end-to-end check
         run: |
           python -m uvicorn incident_response.api:app --port 8123 &
