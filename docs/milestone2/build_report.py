@@ -285,8 +285,9 @@ B.append(
     p(
         "**Design justification.** Parsing, counting and table lookup are arithmetic and retrieval rather than reasoning, so they are deterministic. "
         "This also holds LLM calls equal across conditions, which the comparison depends on. The system has no planner, tool-calling loop or long-term "
-        "memory. Its coordination is a fixed sequence, and verification happens after the answer rather than feeding back into it. A tool-using agent "
-        "loop is listed as remaining work in Section 6."
+        "memory. Its coordination is a fixed sequence, and verification happens after the answer rather than feeding back into it. After this commit we added a "
+        "tool-using agent on branch `final-work`: the model chooses read-only log tools, decides when to stop, and gets one chance to correct citations an automatic check cannot confirm. "
+        "In a pilot on D3 with gpt-oss-20b it scored 15 of 16 against 14 of 16 for the fixed pipeline in the same run, using 2.5 LLM calls and 2,222 input tokens per log against 1 call and 922 tokens. It chose its tools per log, calling `list_errors` and `measure_spacing` only on some. One log separates them, so this is preliminary."
     )
 )
 B.append(
@@ -427,7 +428,7 @@ B.append(
             ["Required", "Differences are not statistically significant", "Freeze the scorers, then run more logs per model", "[[names]]", "Paired tests reported on fresh logs"],
             ["Required", "Task is near ceiling and may favor the parser", "Run 75 and 150-request logs, remove the spread-versus-cluster hint, and add a parser without spacing fields", "[[names]]", "Results show where, if anywhere, structure helps"],
             ["Required", "Public benchmark covers a 30-case pilot", "Run all 90 RE3 cases on more models", "[[names]]", "Full RE3 results reported"],
-            ["Required", "Limited agentic behavior", "Decide with the stakeholder whether to add a tool-using diagnosis loop, then implement and evaluate it", "[[names]]", "New condition evaluated, or decision documented"],
+            ["Required", "Tool-using agent has only a 16-log pilot", "Evaluate it across all datasets, and decide with the stakeholder whether it becomes the main system", "[[names]]", "Agent results reported on every dataset"],
             ["Required", "Known parsing and false-alarm failures", "Apply the fixes from Section 5", "[[names]]", "Failure cases rechecked"],
             ["Required", "Stakeholder sign-off, final report, presentation and demo", "Follow up on the deliverables in Section 1 and prepare the final materials", "[[names]]", "Submitted and rehearsed"],
             ["Optional", "Real-log use", "Log upload, flexible parsing, secret redaction and an unknown class", "[[names]]", "An uploaded log returns a cited diagnosis"],

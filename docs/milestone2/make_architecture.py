@@ -102,7 +102,7 @@ arrow((28, 19), (28, 15))
 # Planned
 lane_label(2.5, "Planned")
 box(10, 0, 16, 5, "Log upload", "planned", 6.2)
-box(28, 0, 21, 5, "Tool-using agent loop", "planned", 6.2)
+box(28, 0, 21, 5, "Full agent evaluation", "planned", 6.2)
 box(51, 0, 22, 5, "Full public benchmark", "planned", 6.2)
 box(75, 0, 24, 5, "Compound faults", "planned", 6.2)
 
