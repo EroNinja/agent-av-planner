@@ -138,6 +138,21 @@ export default function VerdictCard({ result, trueFault, correct, recoveryResult
             No independently verifiable claim was made.
           </p>
         )}
+        {evidence && (evidence.count_claims_checked ?? 0) > 0 && (
+          <>
+            <p className="note" style={{ marginTop: 6 }}>
+              {evidence.count_claims_supported} of {evidence.count_claims_checked} stated error counts
+              match the log (reported separately, not part of the score above).
+            </p>
+            {(evidence.count_unsupported ?? []).length > 0 && (
+              <ul className="muted" style={{ margin: "5px 0 0", paddingLeft: 18 }}>
+                {(evidence.count_unsupported ?? []).map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
       </div>
 
       <dl className="kv" style={{ marginTop: 14 }}>
