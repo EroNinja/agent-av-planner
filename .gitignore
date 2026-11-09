@@ -28,3 +28,9 @@ backend/logs/*/
 backend/external/
 docs/walkthrough/
 ~$*
+docs/milestone2/*.docx
+docs/milestone2/build_report.py
+docs/milestone2/report_results.json
+docs/milestone2/make_architecture.py
+docs/milestone2/figures/
+docs/Krithika_Meeting_Talk.pdf
