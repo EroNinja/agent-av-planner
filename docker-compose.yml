@@ -2,9 +2,13 @@
 services:
   backend:
     build: ./backend
-    env_file:
-      - path: ./backend/.env
-        required: false
+    # Keys are optional: the mock provider needs none. To use real providers:
+    #   docker compose --env-file backend/.env up --build
+    # Each name is passed only when set (an optional env_file needs Compose 2.24+).
+    environment:
+      - ANTHROPIC_API_KEY
+      - GROQ_API_KEY
+      - GROQ_MODELS
     volumes:
       - ./backend/data:/app/data
       - ./backend/logs:/app/logs
