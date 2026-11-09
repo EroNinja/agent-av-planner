@@ -27,3 +27,4 @@ backend/logs/noisy10/
 backend/logs/*/
 backend/external/
 docs/walkthrough/
+~$*
