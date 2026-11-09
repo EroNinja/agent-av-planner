@@ -12,6 +12,8 @@ Then it checks:
   * through the frontend's /api proxy, as a browser would: a log is
     generated, a mock diagnosis streams to a result and a mock sweep
     streams to completion
+  * the dashboard renders in headless Chrome, filled in from the API, with
+    no uncaught errors (skipped if no Chrome/Chromium is found)
 
 The stack is removed afterwards unless --keep is given. Needs only Docker
 with Compose v2 and Python 3.8+.
@@ -23,6 +25,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -147,7 +150,7 @@ def check_browser_flows(web):
     listed = [log["name"] for log in json.loads(http("GET", web + "/api/logs")[2]).get("logs", [])]
     check("the generated log is listed", name in listed, f"{len(listed)} logs")
     if not name:
-        return
+        return None
 
     for condition in ("single_agent", "pipeline"):
         status, ctype, text = http("POST", web + "/api/diagnose/stream",
@@ -174,7 +177,7 @@ def check_browser_flows(web):
     sweep = json.loads(text) if status == 200 else {}
     check("mock sweep starts", status == 200 and sweep.get("total") == 2, sweep.get("total", text[:120]))
     if not sweep:
-        return
+        return name
 
     status, ctype, text = http("GET", web + f"/api/sweep/{sweep['sweep_id']}/stream", timeout=120)
     events = sse_events(text) if status == 200 else []
@@ -194,6 +197,47 @@ def check_browser_flows(web):
         sorted(row["condition"] for row in stats.get("by_arm", [])) == ["pipeline", "single_agent"]
         and len(runs) == 2,
         f"{len(stats.get('by_arm', []))} arm rows, {len(runs)} runs",
+    )
+    return name
+
+
+def find_browser():
+    candidates = [os.environ.get("CHROME_BIN", ""),
+                  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+                  "/Applications/Chromium.app/Contents/MacOS/Chromium"]
+    candidates += [shutil.which(name) or "" for name in
+                   ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser")]
+    return next((path for path in candidates if path and os.access(path, os.X_OK)), None)
+
+
+def check_render(web, log_name):
+    """Load the dashboard in headless Chrome: the React app must mount and fill itself from the API."""
+    browser = find_browser()
+    if browser is None:
+        results.append(("dashboard renders in headless Chrome", "SKIP"))
+        print("SKIP dashboard renders in headless Chrome  [no Chrome/Chromium found; set CHROME_BIN]")
+        return
+    with tempfile.TemporaryDirectory(prefix="avp-smoke-chrome-") as profile:
+        command = [browser, "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
+                   f"--user-data-dir={profile}", "--enable-logging=stderr", "--v=0",
+                   "--virtual-time-budget=10000", "--dump-dom", web + "/"]
+        if sys.platform.startswith("linux"):
+            command.insert(1, "--no-sandbox")  # CI runners block the user-namespace sandbox
+        try:
+            completed = subprocess.run(command, capture_output=True, text=True, timeout=90)
+            dom, stderr = completed.stdout, completed.stderr
+        except subprocess.TimeoutExpired:
+            dom, stderr = "", "timed out"
+    console = [line.split("] ", 1)[-1] for line in stderr.splitlines() if re.search(r"CONSOLE[:(]", line)]
+    uncaught = [line for line in console if "Uncaught" in line]
+    wanted = ["Incident Response", "Mock (offline)", "Inject a fault"] + ([log_name] if log_name else [])
+    missing = [text for text in wanted if text not in dom]
+    check(
+        "dashboard renders in headless Chrome",
+        not missing and not uncaught,
+        f"missing {missing}" if missing else
+        f"uncaught: {uncaught[0][:160]}" if uncaught else
+        f"React mounted, providers and logs loaded; {len(console)} console lines",
     )
 
 
@@ -239,7 +283,8 @@ def main():
                 check_dashboard(web)
                 check_no_keys(web)
                 check_backend_suite(api)
-                check_browser_flows(web)
+                log_name = check_browser_flows(web)
+                check_render(web, log_name)
     except KeyboardInterrupt:
         check("interrupted", False)
     finally:
@@ -257,7 +302,9 @@ def main():
         workdir.rmdir()
 
     passed = sum(outcome == "PASS" for _, outcome in results)
-    print(f"\n{passed} passed, {len(failed)} failed" + (": " + ", ".join(failed) if failed else ""))
+    skipped = sum(outcome == "SKIP" for _, outcome in results)
+    print(f"\n{passed} passed, {len(failed)} failed, {skipped} skipped"
+          + (": " + ", ".join(failed) if failed else ""))
     return 1 if failed else 0
 
 
