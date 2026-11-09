@@ -1,8 +1,13 @@
 """Offline checks for error-count claims in the evidence scorer. Run from backend/. No network."""
 
+import pathlib
 import sys
+import tempfile
 
 sys.path.insert(0, ".")
+
+from incident_response import db
+from incident_response.analysis import analyze
 
 from incident_response.agents.log_correlator import correlate
 from incident_response.conditions import diagnose
@@ -79,6 +84,34 @@ for fault in ("dependency_down", "pool_exhausted", "slow_query", "no_fault"):
                 if ev.get("count_unsupported"):
                     check(f"mock count {fault} run{run} noise={noise} {condition}", False, ev["count_unsupported"])
 check("mock counts agree with every generated log", not any(name.startswith("mock count") for name in fails))
+
+# Analysis: count accuracy per condition, with runs scored before counts existed left out.
+conn = db.connect(pathlib.Path(tempfile.mkdtemp()) / "runs.db")
+db.init_db(conn)
+
+
+def ev(checked, supported):
+    return {"score": 1.0, "claims_checked": 1, "claims_supported": 1,
+            "count_claims_checked": checked, "count_claims_supported": supported, "count_unsupported": []}
+
+
+base = dict(provider="groq", model="m", predicted_fault="pool_exhausted", explanation="", remediation="")
+for name, single_ev, pipe_ev in (
+    ("a", ev(2, 1), ev(1, 1)),   # baseline stated one wrong count
+    ("b", ev(1, 0), ev(0, 0)),   # pipeline stated no count
+    ("c", {"score": 1.0, "claims_checked": 1, "claims_supported": 1}, ev(1, 1)),  # older baseline run
+):
+    db.record_run(conn, {**base, "condition": "single_agent", "evidence": single_ev}, name, "pool_exhausted", sweep_id="s")
+    db.record_run(conn, {**base, "condition": "pipeline", "evidence": pipe_ev}, name, "pool_exhausted", sweep_id="s")
+arm = analyze(conn, ["s"])["arms"][0]
+single_counts, pipe_counts = arm["single_agent"]["counts"], arm["pipeline"]["counts"]
+check("analysis counts baseline", (single_counts["k"], single_counts["n"], single_counts["runs_scored"],
+                                   single_counts["runs_with_wrong_count"]) == (1, 3, 2, 2), single_counts)
+check("analysis counts pipeline", (pipe_counts["k"], pipe_counts["n"], pipe_counts["rate"],
+                                   pipe_counts["runs_with_wrong_count"]) == (2, 2, 1.0, 0), pipe_counts)
+check("analysis count rate has an interval", single_counts["rate"] == 0.3333 and single_counts["ci95"] is not None)
+check("accuracy unaffected by counts", arm["single_agent"]["accuracy"]["rate"] == 1.0 and arm["n_pairs"] == 3)
+conn.close()
 
 print("\nFAILED: " + ", ".join(fails) if fails else "\nALL EVIDENCE COUNT CHECKS PASSED")
 sys.exit(1 if fails else 0)

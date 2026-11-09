@@ -14,6 +14,7 @@ import {
   api,
   streamSSE,
   type AnalysisArm,
+  type CountStat,
   type LogInfo,
   type ProviderInfo,
   type StatsResponse,
@@ -22,6 +23,12 @@ import {
 import { CONDITION_LABELS, SERIES, STATUS, num, pct } from "../lib/theme";
 
 const AXIS = { fill: "var(--text-muted)", fontSize: 11 };
+
+function countsTitle(arm: AnalysisArm): string {
+  const side = (c: CountStat | undefined) =>
+    c ? `${c.k}/${c.n} stated counts, ${c.runs_with_wrong_count} runs with a wrong count` : "not scored";
+  return `baseline: ${side(arm.single_agent.counts)}\npipeline: ${side(arm.pipeline.counts)}`;
+}
 
 function shortModel(model: string): string {
   return model.replace(/^openai\//, "").replace(/-versatile$|-instant$/, "");
@@ -493,7 +500,9 @@ export default function CompareView({ providers, logs }: Props) {
               <h3>Paired analysis</h3>
               <p>
                 Baseline → pipeline on the same logs. "Meets proposal" also requires no invented evidence;
-                "grounded" must cite the real cause. p is exact McNemar, and below 0.05 is the usual bar.
+                "grounded" must cite the real cause. "Counts right" is the share of stated error counts
+                that match the log, from runs scored since count checking was added. p is exact McNemar,
+                and below 0.05 is the usual bar.
               </p>
             </div>
           </div>
@@ -510,6 +519,7 @@ export default function CompareView({ providers, logs }: Props) {
                   <th style={{ textAlign: "right" }}>p</th>
                   <th style={{ textAlign: "right" }}>grounded</th>
                   <th style={{ textAlign: "right" }}>p</th>
+                  <th style={{ textAlign: "right" }}>counts right</th>
                   <th style={{ textAlign: "right" }}>recovery</th>
                   <th style={{ textAlign: "right" }}>Brier</th>
                   <th style={{ textAlign: "right" }}>tokens in</th>
@@ -528,6 +538,9 @@ export default function CompareView({ providers, logs }: Props) {
                     <td className="num">{num(arm.paired.meets_proposal.p, 3)}</td>
                     <td className="num">{pct(arm.single_agent.grounded.rate)} → {pct(arm.pipeline.grounded.rate)}</td>
                     <td className="num">{num(arm.paired.grounded.p, 3)}</td>
+                    <td className="num" title={countsTitle(arm)}>
+                      {pct(arm.single_agent.counts?.rate ?? null)} → {pct(arm.pipeline.counts?.rate ?? null)}
+                    </td>
                     <td className="num">{pct(arm.single_agent.recovery.rate)} → {pct(arm.pipeline.recovery.rate)}</td>
                     <td className="num">{num(arm.single_agent.brier, 3)} → {num(arm.pipeline.brier, 3)}</td>
                     <td className="num">{Math.round(arm.single_agent.mean_input_tokens ?? 0)} → {Math.round(arm.pipeline.mean_input_tokens ?? 0)}</td>

@@ -61,6 +61,36 @@ def _rate(rows: list[dict], key: str) -> dict:
     return {"k": hits, "n": n, "rate": round(hits / n, 4) if n else None, "ci95": wilson_interval(hits, n)}
 
 
+def _count_summary(rows: list[dict]) -> dict:
+    """Stated error counts that match the log, from each run's evidence report.
+
+    Runs stored before count checking existed have no count fields and are left
+    out, so `runs_scored` says how many runs this covers.
+    """
+    scored = checked = supported = wrong_runs = 0
+    for row in rows:
+        try:
+            evidence = (json.loads(row.get("payload") or "{}") or {}).get("evidence") or {}
+        except (TypeError, ValueError):
+            continue
+        if "count_claims_checked" not in evidence:
+            continue
+        scored += 1
+        run_checked = int(evidence.get("count_claims_checked") or 0)
+        run_supported = int(evidence.get("count_claims_supported") or 0)
+        checked += run_checked
+        supported += run_supported
+        wrong_runs += int(run_supported < run_checked)
+    return {
+        "runs_scored": scored,
+        "runs_with_wrong_count": wrong_runs,
+        "k": supported,
+        "n": checked,
+        "rate": round(supported / checked, 4) if checked else None,
+        "ci95": wilson_interval(supported, checked),
+    }
+
+
 def _condition_summary(rows: list[dict]) -> dict:
     n = len(rows)
     calibration = [
@@ -76,6 +106,7 @@ def _condition_summary(rows: list[dict]) -> dict:
         "strict": _rate(strict_rows, "strict"),
         "meets_proposal": _rate(rows, "meets_proposal"),
         "grounded": _rate(rows, "grounded"),
+        "counts": _count_summary(rows),
         "recovery": _rate(recovery_rows, "recovery_valid"),
         "invalid_after_correct": sum(1 for row in recovery_rows if row["correct"] == 1 and row["recovery_valid"] == 0),
         "failure_labels": dict(labels.most_common()),
@@ -109,7 +140,7 @@ def analyze(conn: sqlite3.Connection, sweep_ids: list[str]) -> dict:
         f"""
         SELECT sweep_id, provider, model, request_count, log_name, condition, true_fault, correct,
                malformed, confidence, meets_proposal, grounded, input_tokens, output_tokens,
-               recovery_valid, failure_labels, llm_call_count
+               recovery_valid, failure_labels, llm_call_count, payload
         FROM runs
         WHERE sweep_id IN ({marks}) AND api_error = 0
         ORDER BY id

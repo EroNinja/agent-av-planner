@@ -66,6 +66,13 @@ def main() -> None:
                 f"   only baseline={stats['only_single']}  only pipeline={stats['only_pipeline']}  p={stats['p']:.3f}"
                 f"   right fault, bad fix: {single['invalid_after_correct']} -> {pipeline['invalid_after_correct']}"
             )
+        counts = (single["counts"], pipeline["counts"])
+        if any(c["n"] for c in counts):
+            print(
+                f"  {'counts right':<15} {pair(single, 'counts')} -> {pair(pipeline, 'counts')}"
+                f"   stated {counts[0]['k']}/{counts[0]['n']} -> {counts[1]['k']}/{counts[1]['n']}"
+                f"   runs with a wrong count {counts[0]['runs_with_wrong_count']} -> {counts[1]['runs_with_wrong_count']}"
+            )
         print(f"  {'brier':<15} {single['brier']} -> {pipeline['brier']}")
         print(f"  {'labels base':<15} {single['failure_labels'] or 'none'}")
         print(f"  {'labels pipe':<15} {pipeline['failure_labels'] or 'none'}")

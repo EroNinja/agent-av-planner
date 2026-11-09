@@ -174,11 +174,18 @@ export interface RateStat {
   ci95: [number, number] | null;
 }
 
+export interface CountStat extends RateStat {
+  runs_scored: number;
+  runs_with_wrong_count: number;
+}
+
 export interface ConditionAnalysis {
   accuracy: RateStat;
   strict: RateStat;
   meets_proposal: RateStat;
   grounded: RateStat;
+  // Absent from servers older than count checking.
+  counts?: CountStat;
   recovery: RateStat;
   invalid_after_correct: number;
   failure_labels: Record<string, number>;
