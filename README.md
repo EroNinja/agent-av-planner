@@ -239,11 +239,39 @@ python evaluate_rcaeval.py --per-system 10 --arm groq:qwen/qwen3.8-27b
 
 ## Docker
 
+No API key is needed: without one, the stack runs on the offline `mock` provider.
+
 ```bash
 docker compose up --build
 ```
 
-Then open http://localhost:8080. Put keys in `backend/.env` before starting.
+Then open http://localhost:8080 (the API is on port 8000). To use real providers,
+put keys in `backend/.env` and pass the file in:
+
+```bash
+docker compose --env-file backend/.env up --build
+```
+
+Logs and the run database are kept in `backend/logs` and `backend/data`.
+`AVP_WEB_PORT` and `AVP_API_PORT` change the ports. Any Compose v2 works.
+
+### Smoke test
+
+```bash
+python3 scripts/docker_smoke.py
+```
+
+This builds and starts a separate copy of the stack with no API keys, on ports
+18080 and 18000 with empty volumes, so a running stack and its data are untouched.
+It checks that:
+
+- the dashboard is served and renders in headless Chrome (skipped if Chrome is not installed)
+- a log can be generated
+- a mock diagnosis and a mock sweep complete through the dashboard's `/api` proxy
+- `backend/tests/check_end_to_end.py` passes against the container
+
+The stack is removed afterwards; `--keep` leaves it running. It exits non-zero
+on any failure, and CI runs it on every push.
 
 ## Tests
 
