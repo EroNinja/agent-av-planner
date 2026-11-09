@@ -15,6 +15,16 @@ input. Three claim types are extracted from the explanation text:
                         Thresholds such as "under 100 ms" are comparisons, not
                         measurements, and are skipped.
 
+A fourth claim type is scored separately, so the score above is unchanged:
+
+  * error counts     -- "7 OperationalError failures", "OperationalError x7",
+                        "9 errors". A typed count must match that type's
+                        count in the log, or its longest contiguous run when
+                        the type dominates. An untyped count of errors or
+                        failures must match the total, a per-type count or the
+                        longest run. Comparisons such as "more than 3 errors"
+                        are skipped. Reported as count_claims_*.
+
 Anything the extractor cannot confidently identify is not counted.
 `claims_checked == 0` means no verifiable claim was made, reported as `None`
 rather than a perfect score.
@@ -77,6 +87,30 @@ THRESHOLD_BEFORE_RE = re.compile(
 
 LATENCY_TOLERANCE = 0.25  # fraction outside the observed min/max still accepted
 
+_TYPE = r"([A-Z][A-Za-z]*(?:Error|Exception))"
+_COUNT_WORDS = r"(?:consecutive|contiguous|sequential|clustered|separate|distinct|total|more)"
+TYPED_COUNT_RES = (
+    # "7 OperationalError failures", "9 consecutive OperationalError errors"
+    re.compile(r"\b(\d+)\s+(?:" + _COUNT_WORDS + r"\s+)?" + _TYPE + r"\b"),
+    # "OperationalError x7", "OperationalError \u00d77", "OperationalError (7)"
+    re.compile(_TYPE + r"\s*(?:[x\u00d7*]\s*|\(\s*)(\d+)\b\)?"),
+    # "7 occurrences of OperationalError"
+    re.compile(r"\b(\d+)\s+(?:occurrences|instances|lines|entries)\s+of\s+" + _TYPE + r"\b"),
+)
+UNTYPED_COUNT_RE = re.compile(
+    r"\b(\d+)\s+(?:" + _COUNT_WORDS + r"\s+)?(?:errors|failures|failed\s+requests|error\s+lines)\b",
+    re.IGNORECASE,
+)
+# "request 12 OperationalError" and "ids 12, 13, 14 OperationalError" name ids, not counts.
+ID_BEFORE_RE = re.compile(
+    r"(?:\b(?:request[_\s-]?ids?|requests?|ids?)\s*[#=:]?\s*|[#=,\-\u2013]\s*|\b(?:to|through|and)\s+)$",
+    re.IGNORECASE,
+)
+COMPARISON_BEFORE_RE = re.compile(
+    r"(?:than|least|most|over|under|above|below|fewer|up\s+to|about|around|roughly|~|<|>|\u2265|\u2264)\s*$",
+    re.IGNORECASE,
+)
+
 @dataclass
 class EvidenceReport:
     claims_checked: int = 0
@@ -85,6 +119,11 @@ class EvidenceReport:
     cited_failure_ids: list[int] = field(default_factory=list)
     latency_supported: int = 0
     spacing_cited: bool = False
+    # Error counts are kept out of claims_checked so the score stays comparable
+    # with runs scored before this check existed.
+    count_claims_checked: int = 0
+    count_claims_supported: int = 0
+    count_unsupported: list[str] = field(default_factory=list)
 
     @property
     def score(self) -> float | None:
@@ -101,6 +140,9 @@ class EvidenceReport:
             "cited_failure_ids": self.cited_failure_ids,
             "latency_supported": self.latency_supported,
             "spacing_cited": self.spacing_cited,
+            "count_claims_checked": self.count_claims_checked,
+            "count_claims_supported": self.count_claims_supported,
+            "count_unsupported": self.count_unsupported[:8],
         }
 
 
@@ -143,6 +185,62 @@ def _cited_ids(explanation: str) -> dict[int, bool]:
         for request_id in _expand_ids(match.group(1)):
             cited.setdefault(request_id, says_success)
     return cited
+
+
+def _typed_counts(explanation: str) -> list[tuple[str, int]]:
+    claims: list[tuple[str, int]] = []
+    for pattern in TYPED_COUNT_RES:
+        for match in pattern.finditer(explanation):
+            before = explanation[: match.start()]
+            if COMPARISON_BEFORE_RE.search(before) or (match.group(1).isdigit() and ID_BEFORE_RE.search(before)):
+                continue
+            a, b = match.group(1), match.group(2)
+            error_type, number = (b, a) if a.isdigit() else (a, b)
+            claims.append((error_type, int(number)))
+    return claims
+
+
+def _score_counts(report: EvidenceReport, explanation: str, summary_dict: dict, log_text: str) -> None:
+    """Check stated error counts against the log. Each distinct claim is counted once."""
+    type_counts = {k: int(v) for k, v in (summary_dict.get("error_type_counts") or {}).items()}
+    for error_type in set(ERROR_TYPE_RE.findall(explanation)) - set(type_counts):
+        found = len(re.findall(r"error_type=" + re.escape(error_type) + r"\b", log_text))
+        if found:
+            type_counts[error_type] = found
+    total = int(summary_dict.get("error_count") or sum(type_counts.values()))
+    dominant = summary_dict.get("dominant_error_type")
+    longest_run = int((summary_dict.get("error_id_spacing") or {}).get("max_contiguous_run") or 0)
+
+    seen: set[tuple[str, int]] = set()
+    for error_type, number in _typed_counts(explanation):
+        if (error_type, number) in seen:
+            continue
+        seen.add((error_type, number))
+        report.count_claims_checked += 1
+        actual = type_counts.get(error_type, 0)
+        if number == actual or (error_type == dominant and number == longest_run):
+            report.count_claims_supported += 1
+        else:
+            report.count_unsupported.append(
+                f"says {number} {error_type} but the log has {actual}"
+            )
+
+    allowed = {total, longest_run, *type_counts.values()} - {0}
+    for match in UNTYPED_COUNT_RE.finditer(explanation):
+        before = explanation[: match.start()]
+        if COMPARISON_BEFORE_RE.search(before) or ID_BEFORE_RE.search(before):
+            continue
+        number = int(match.group(1))
+        if ("", number) in seen:
+            continue
+        seen.add(("", number))
+        report.count_claims_checked += 1
+        if number in allowed:
+            report.count_claims_supported += 1
+        else:
+            report.count_unsupported.append(
+                f"says {number} errors but the log has {total} in total"
+            )
 
 
 def score_evidence(explanation: str, log_text: str, summary) -> EvidenceReport:
@@ -209,4 +307,5 @@ def score_evidence(explanation: str, log_text: str, summary) -> EvidenceReport:
         ):
             report.latency_supported = 1
 
+    _score_counts(report, explanation, summary_dict, log_text)
     return report

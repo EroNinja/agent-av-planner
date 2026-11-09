@@ -26,6 +26,19 @@ MODELS = [DEFAULT_MODEL]
 
 _LATENCY_RE = re.compile(r"latency_ms(?:_mean)?[=\":\s]+([\d.]+)")
 _IDS_RE = re.compile(r"error_request_ids\"?\s*:?\s*\[([^\]]*)\]")
+def _stated_count(text: str, error_type: str, fallback: int) -> int:
+    """How many errors of a type the input reports, for the explanation text.
+
+    A summary names each type several times (counts, dominant type, samples),
+    so counting the string overstates it. Classification keeps its own rules.
+    """
+    match = re.search(r'"' + error_type + r'"\s*:\s*(\d+)', text)
+    if match:
+        return int(match.group(1))
+    raw = len(re.findall(r"error_type=" + error_type + r"\b", text))
+    return raw or fallback
+
+
 _RAW_GENERIC_RE = re.compile(r"request_id=(\d+) status=error latency_ms=[\d.]+ error_type=OperationalError")
 
 
@@ -51,30 +64,33 @@ def _classify(text: str) -> tuple[str, float, str]:
 
     if "OperationalError" in text:
         ids = _generic_error_ids(text)
+        # A summary's id list also holds unrelated transients, so take the
+        # count of the error type itself when the summary gives one.
+        n_generic = _stated_count(text, "OperationalError", len(ids))
         if _longest_contiguous_run(ids) >= 4:
             return (
                 "pool_exhausted",
                 0.8,
-                f"{len(ids)} OperationalError failures fall in a contiguous block of request ids.",
+                f"{n_generic} OperationalError failures fall in a contiguous block of request ids.",
             )
         return (
             "dependency_down",
             0.8,
-            f"{len(ids)} OperationalError failures are spread across the run, not clustered.",
+            f"{n_generic} OperationalError failures are spread across the run, not clustered.",
         )
 
     if pool_hits and pool_hits >= refused_hits:
         return (
             "pool_exhausted",
             0.93,
-            f"Found {pool_hits} PoolExhaustedError occurrences clustered over consecutive "
+            f"Found {_stated_count(text, 'PoolExhaustedError', pool_hits)} PoolExhaustedError occurrences clustered over consecutive "
             "request ids, with latency on surviving requests at baseline.",
         )
     if refused_hits:
         return (
             "dependency_down",
             0.91,
-            f"Found {refused_hits} ConnectionRefusedError occurrences spread across the run "
+            f"Found {_stated_count(text, 'ConnectionRefusedError', refused_hits)} ConnectionRefusedError occurrences spread across the run "
             "rather than clustered, with no latency growth.",
         )
     if mean_latency > 150:

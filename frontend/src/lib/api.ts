@@ -58,6 +58,10 @@ export interface EvidenceReport {
   claims_supported: number;
   score: number | null;
   unsupported: string[];
+  // Absent on runs stored before error-count checking existed.
+  count_claims_checked?: number;
+  count_claims_supported?: number;
+  count_unsupported?: string[];
 }
 
 export interface DiagnosisResult {
