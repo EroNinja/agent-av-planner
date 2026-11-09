@@ -1,11 +1,15 @@
-"""Drive a freshly cloned backend through its HTTP API, offline, using the mock."""
+"""Drive a freshly cloned backend through its HTTP API, offline, using the mock.
+
+E2E_BASE_URL points it at another backend, such as the Docker container.
+"""
 import json
+import os
 import sys
 import time
 import urllib.error
 import urllib.request
 
-BASE = "http://127.0.0.1:8123"
+BASE = os.environ.get("E2E_BASE_URL", "http://127.0.0.1:8123").rstrip("/")
 fails = []
 
 
