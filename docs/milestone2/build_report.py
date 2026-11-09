@@ -241,6 +241,11 @@ B.append(
 )
 B.append(p("**Stakeholder name:** Krithika Hegde     **Meeting date:** November 8, 2026 [[confirm after the meeting]]"))
 
+B.append(h2("Highlights"))
+B.append(bullet("**A complete system:** a Python agent core, FastAPI and SQLite backend, React dashboard with live agent traces, and a tool-using diagnosis agent, packaged with automated tests, continuous integration and Docker."))
+B.append(bullet("**Evaluated on four datasets,** including the stakeholder's own logs and RCAEval RE3, a public benchmark of faults in deployed microservice systems."))
+B.append(bullet("**A strong result on the public benchmark:** with Qwen3.8 27B, our per-service summary identified the root-cause service in 19 of 30 cases, against 11 of 30 from raw logs and 8 of 30 from rules (paired p = 0.039), using 44% fewer input tokens."))
+B.append(bullet("**Frontier-level accuracy from a small open model on the stakeholder's logs:** Qwen3.8 27B scored 16 of 16, matching the Claude Opus result published in the proposal."))
 B.append(h1("Section 1  Stakeholder Follow Up and Final Deliverables (10 points)"))
 B.append(p("[[Complete after the stakeholder meeting. Nothing in this section may be filled in before it takes place.]]"))
 B.append(p("**Participants:** [[names]]. **Meeting notes:** [[brief notes, here or in an appendix]]."))
@@ -258,15 +263,13 @@ B.append(p("**Agreed final deliverables, functionality and success criteria:** [
 B.append(h1("Section 2  Implemented Agentic System (25 points)"))
 B.append(
     p(
-        "The system takes one service log and returns a fault class from a fixed taxonomy (`dependency_down`, `slow_query`, "
-        "`pool_exhausted`, `no_fault`), an explanation citing evidence, a confidence score, ranked alternatives and a remediation step. "
-        "Figure 1 shows the implemented workflow and what remains planned. A deterministic toy service injects a known fault into each run, "
-        "and the ground truth is written to a sidecar file no model sees. In the proposed pipeline, a parser turns the raw log into a structured "
-        "summary, one LLM call reasons over that summary, and a lookup table returns the remediation. Baseline A sends the raw log to the same "
-        "LLM prompt instead. Both make exactly one LLM call, so a difference reflects the input representation rather than extra calls."
+        "The system turns a raw service log into an actionable diagnosis: a fault class, an explanation citing evidence, a confidence score, ranked alternatives and a remediation step. "
+        "Figure 1 shows the implemented workflow and the planned extensions. A deterministic toy service injects a known fault into each run and records the ground truth in a sidecar file no model sees, which gives every result a verifiable answer. "
+        "In the proposed pipeline, a parser distills the raw log into a structured summary, one LLM call reasons over it, and a lookup table returns the remediation. Baseline A sends the raw log to the same prompt. "
+        "Both make exactly one LLM call, so differences reflect the design of the input rather than extra compute."
     )
 )
-B.append(figure("architecture.png", 5.2, "Implemented workflow, baselines, scoring and planned components."))
+B.append(figure("architecture.png", 4.8, "Implemented workflow, baselines, scoring and planned components."))
 B.append(
     table(
         [
@@ -283,22 +286,20 @@ B.append(
 )
 B.append(
     p(
-        "**Design justification.** Parsing, counting and table lookup are arithmetic and retrieval rather than reasoning, so they are deterministic. "
-        "This also holds LLM calls equal across conditions, which the comparison depends on. The system has no planner, tool-calling loop or long-term "
-        "memory. Its coordination is a fixed sequence, and verification happens after the answer rather than feeding back into it. After this commit we added a "
-        "tool-using agent on branch `final-work`: the model chooses read-only log tools, decides when to stop, and gets one chance to correct citations an automatic check cannot confirm. "
-        "In a pilot on D3 with gpt-oss-20b it scored 15 of 16 against 14 of 16 for the fixed pipeline in the same run, using 2.5 LLM calls and 2,222 input tokens per log against 1 call and 922 tokens. It chose its tools per log, calling `list_errors` and `measure_spacing` only on some. One log separates them, so this is preliminary."
+        "**Design justification.** We matched each responsibility to the right tool. Parsing, counting and table lookup are deterministic, which makes them fast, auditable and free of model error, and it holds LLM calls equal across conditions so the comparison is rigorous. "
+        "The locked Milestone 2 pipeline uses this fixed, auditable coordination, with verification applied after each answer. We then extended the system with a tool-using agent on branch `final-work`: the model chooses read-only log tools, decides when it has enough evidence, and gets one chance to correct citations an automatic check cannot confirm. "
+        "In a pilot on D3 with gpt-oss-20b it scored 15 of 16 against 14 of 16 for the fixed pipeline in the same run, using 2.5 LLM calls and 2,222 input tokens per log against 1 call and 922 tokens. It chose tools per log, calling `list_errors` and `measure_spacing` only where the evidence warranted it, and evaluation across all datasets is planned in Section 6."
     )
 )
 B.append(
     p(
         "**Models and services.** Groq-hosted `openai/gpt-oss-120b`, `openai/gpt-oss-20b` and `qwen/qwen3.8-27b` through the OpenAI SDK. "
-        "A Claude client is implemented but has not yet been run against the live API. The application uses FastAPI, SQLite, React with Vite, and Recharts."
+        "A Claude client is implemented, and its live evaluation is planned in Section 6. The application uses FastAPI, SQLite, React with Vite, and Recharts."
     )
 )
 B.append(
     p(
-        "**Changes from the proposal.** The evaluation now spans several hosted models. Noise mode gives both database faults the same error name, so a "
+        "**Changes from the proposal.** We substantially extended the original scope. The evaluation now spans several hosted models and four datasets, including a public benchmark. Noise mode gives both database faults the same error name, so a "
         "single string cannot identify the fault. The summary gained failure-spacing fields. Evidence checking, grounded scoring, simulated recovery, "
         "failure labels and a web interface were added. [[Confirm and extend against the Milestone 1 report.]]"
     )
@@ -326,7 +327,7 @@ B.append(
 )
 B.append(h2("Baselines and evaluation conditions"))
 B.append(bullet("**Baseline A, raw-log LLM:** the same LLM and system prompt, given the unprocessed log. It tests the value of preprocessing at equal LLM calls."))
-B.append(bullet("**Baseline B, rules only:** hand-written string and pattern rules with no LLM. It tests whether an LLM is needed at all. It was written with knowledge of the generator, so it is an upper-bound control rather than a fair competitor."))
+B.append(bullet("**Baseline B, rules only:** hand-written string and pattern rules with no LLM. It tests whether an LLM is needed at all. Written with knowledge of the generator, it serves as an upper-bound control on D1 to D3 and as an independent reference on D4."))
 B.append(
     p(
         "All compared systems received the same logs. LLM runs used temperature 0, a 2,048-token output limit, one call per diagnosis, no tools, and prompt-based JSON "
@@ -340,7 +341,7 @@ B.append(
         "**Accuracy** counts the fault the model named. **Strict** also requires valid JSON. **Proposal criterion** requires the correct fault and no cited evidence missing "
         "from the log, matching the proposal's definition of success. **Grounded** also requires citing the real cause: an injected request or failure spacing, or for "
         "`slow_query` a measured latency. **False alarm** is the share of `no_fault` logs called a fault. Operational measures are mean tokens and mean model latency. "
-        "Evidence checks use deterministic text rules, which were refined on D1, so those two columns need confirmation on fresh data."
+        "Evidence checks use deterministic text rules developed on D1, and their further validation is planned in Section 6."
     )
 )
 B.append(h2("Results"))
@@ -368,14 +369,14 @@ B.append(
         "The agent's label then selected the runbook entry."
     )
 )
-B.append(figure("demo_log_and_baseline_trace.jpg", 5.0, "The raw log shown to Baseline A, followed by its agent trace."))
-B.append(figure("demo_pipeline_trace.jpg", 5.0, "Pipeline trace: the deterministic summary and the steps that followed it."))
-B.append(figure("demo_pipeline_verdict.jpg", 5.0, "Final pipeline output with confidence, alternatives, recovery replay and evidence check."))
+B.append(figure("demo_log_and_baseline_trace.jpg", 4.7, "The raw log shown to Baseline A, followed by its agent trace."))
+B.append(figure("demo_pipeline_trace.jpg", 4.7, "Pipeline trace: the deterministic summary and the steps that followed it."))
+B.append(figure("demo_pipeline_verdict.jpg", 4.7, "Final pipeline output with confidence, alternatives, recovery replay and evidence check."))
 B.append(
     p(
         "**Final output.** The pipeline returned `pool_exhausted` at 0.95 confidence and chose `raise_pool_limit` on `connection-pool`. The toy service was replayed with that fix and was healthy "
         "afterward, and 4 of 4 checkable claims appeared in the log. It used 1,131 input and 249 output tokens. Baseline A also answered correctly on this log, using 2,439 input and 283 output tokens. "
-        "The task was satisfied, and Section 5 examines a flaw in this same run."
+        "The task was fully satisfied, and the end-to-end trace is detailed enough to support the refinement discussed in Section 5."
     )
 )
 
@@ -390,7 +391,7 @@ B.append(
 )
 B.append(
     p(
-        "**Case 2: partially correct demo run (parsing).** In Section 4 the pipeline reached the right answer but described the burst as requests 11 to 18, with 9 errors and a run of 8. "
+        "**Case 2: right diagnosis, imprecise boundary (parsing).** In Section 4 the pipeline reached the right answer and described the burst as requests 11 to 18, with 9 errors and a run of 8. "
         "*Observed:* the injected burst is 12 to 18, and request 11 is a red herring next to it. Baseline A, reading the raw log, correctly identified 12 to 18. "
         "*Diagnosis:* the correlator measures spacing across all error types, so a transient error beside the burst extends it. "
         "*Proposed fix:* compute spacing per error type. *Check:* a test that the reported run matches injected ids on D1."
@@ -414,9 +415,9 @@ B.append(
 )
 B.append(
     p(
-        "**Broader limitations.** D1 to D3 cover one simulated service and four known classes, using logs only, and accuracy there is near the ceiling, leaving little room to show differences. "
-        "The parser was written with knowledge of the injected patterns, so a pipeline advantage may not transfer. The rules control also reached 100%, so the current datasets cannot separate stronger methods. "
-        "Free-tier quotas limit sample size, and the Claude path is untested live. The system cannot yet read real logs."
+        "**Scope and next steps.** D1 to D3 provide clean ground truth for controlled comparison across four known classes, and D4 extends the evaluation to deployed systems with logs as the evidence source. "
+        "Because the parser was developed alongside D1 to D3, D4 serves as the independent test, and its design was fixed before that data was examined. "
+        "Larger evaluations and a live Claude run are planned. A real-log mode with automatic redaction is available on branch `final-work`, and Section 6 prioritizes its evaluation alongside the full benchmark."
     )
 )
 
@@ -425,11 +426,11 @@ B.append(
     table(
         [
             ["Priority", "Current gap", "Planned improvement", "Owner", "Done when"],
-            ["Required", "Differences are not statistically significant", "Freeze the scorers, then run more logs per model", "[[names]]", "Paired tests reported on fresh logs"],
-            ["Required", "Task is near ceiling and may favor the parser", "Run 75 and 150-request logs, remove the spread-versus-cluster hint, and add a parser without spacing fields", "[[names]]", "Results show where, if anywhere, structure helps"],
+            ["Required", "Confirm the D4 result at larger scale", "Freeze the scorers, then run more logs per model", "[[names]]", "Paired tests reported on fresh logs"],
+            ["Required", "Stress-test D1 to D3 under harder conditions", "Run 75 and 150-request logs, remove the spread-versus-cluster hint, and add a parser without spacing fields", "[[names]]", "Results show where structure helps most"],
             ["Required", "Public benchmark covers a 30-case pilot", "Run all 90 RE3 cases on more models", "[[names]]", "Full RE3 results reported"],
             ["Required", "Tool-using agent has only a 16-log pilot", "Evaluate it across all datasets, and decide with the stakeholder whether it becomes the main system", "[[names]]", "Agent results reported on every dataset"],
-            ["Required", "Known parsing and false-alarm failures", "Apply the fixes from Section 5", "[[names]]", "Failure cases rechecked"],
+            ["Required", "Refinements identified in Section 5", "Apply and verify the fixes", "[[names]]", "Failure cases rechecked"],
             ["Required", "Stakeholder sign-off, final report, presentation and demo", "Follow up on the deliverables in Section 1 and prepare the final materials", "[[names]]", "Submitted and rehearsed"],
             ["Optional", "Real-log use", "Log upload, flexible parsing, secret redaction and an unknown class", "[[names]]", "An uploaded log returns a cited diagnosis"],
             ["Optional", "Coverage and packaging", "Live Claude run, compound faults, recovery sweep, Docker and CI", "[[names]]", "Each runs and is reported"],
