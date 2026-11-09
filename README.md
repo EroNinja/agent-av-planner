@@ -247,26 +247,21 @@ Then open http://localhost:8080. Put keys in `backend/.env` before starting.
 
 ## Tests
 
-Offline checks that make no API calls. Run them from `backend/`:
+Offline checks that make no API calls. Run all of them with one command (Python 3.11+, from any directory):
 
 ```bash
-python tests/check_scoring.py
+python backend/tests/run_all.py
 ```
 
-```bash
-python tests/check_key_store.py
-```
+It runs every `backend/tests/check_*.py`, prints a pass/fail summary per script and exits
+non-zero if any fail. For `check_end_to_end.py` it starts the API on port 8123 from a
+temporary copy of `backend/` with no `.env`, data, logs or `*_API_KEY` variables, then shuts
+it down, so your own keys and run history are never touched. Port 8123 must be free.
+
+Pass part of a name to run a subset, and `-v` to see every check line:
 
 ```bash
-python tests/check_recovery_labels.py
-```
-
-```bash
-python tests/check_agent_variants.py
-```
-
-```bash
-python tests/check_real_logs.py
+python backend/tests/run_all.py scoring end_to_end -v
 ```
 
 ---
