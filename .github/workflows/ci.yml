@@ -56,4 +56,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker compose build
+      - name: Build, start and smoke-test the stack with no API keys
+        run: python3 scripts/docker_smoke.py
