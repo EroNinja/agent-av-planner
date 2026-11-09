@@ -20,17 +20,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install -r requirements.txt
-      - run: python tests/check_scoring.py
-      - run: python tests/check_key_store.py
-      - run: python tests/check_recovery_labels.py
-      - run: python tests/check_agent_variants.py
-      - run: python tests/check_real_logs.py
-      - run: python tests/check_rcaeval.py
-      - name: API end-to-end check
-        run: |
-          python -m uvicorn incident_response.api:app --port 8123 &
-          sleep 6
-          python tests/check_end_to_end.py
+      - name: Offline checks, including the API end-to-end check
+        run: python tests/run_all.py
       - name: Offline end-to-end sweep
         run: |
           python generate_logs.py --suite --runs-per-fault 1 --noise
